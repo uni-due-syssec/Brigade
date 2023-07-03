@@ -1,0 +1,20 @@
+{
+  "name": "Ethereum",
+  "chain_id": 32382,
+  "rpc_url": "ws://127.0.0.1:8546",
+  "contract_address": "0x071b8f8f375A1932BAAF356BcA98aAC0128bf5bf",
+  "subscription_method": "eth_subscribe",
+  "filter": [
+    "logs",
+    {
+      "address": "0x071b8f8f375A1932BAAF356BcA98aAC0128bf5bf",
+      "topics": [
+        [
+          "0x2bce2dbcfd5eae5755dcd9c531a42fbb14a7197117c13854ba063d6fd831437f",
+          "0xed913c13627cc9986ea63489464a9bff9784eabcda6430bce99c500cce13cbe8",
+          "0xaa568fa165117282ddb19ac1797e528ace29d912dbe3d693cab857e8c02b6396"
+        ]
+      ]
+    }
+  ]
+}

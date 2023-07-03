@@ -1,0 +1,5 @@
+{
+    "rust-analyzer":{
+    "rust-analyzer.enable": true
+    }
+}
