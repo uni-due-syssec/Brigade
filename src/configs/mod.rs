@@ -1,5 +1,5 @@
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Deserializer};
 use serde_json::{json, Value};
 use ws::Result;
 
@@ -72,6 +72,7 @@ impl ChainConfig {
             // Process incoming WebSocket messages handled by the WebSocketClientHandler
             socket::WebSocketClientHandler{
                 // State of the Client
+                chain_name: self.name.clone()
             }
         }).unwrap();
 
