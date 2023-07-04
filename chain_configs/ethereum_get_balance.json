@@ -1,0 +1,9 @@
+{
+    "jsonrpc": "2.0",
+    "method": "eth_getBalance",
+    "params": [
+        "0xAccount",
+        "0xBlockNumber"
+    ],
+    "id": 1
+}
