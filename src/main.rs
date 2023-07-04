@@ -7,6 +7,8 @@ use std::thread;
 mod configs;
 mod socket;
 mod message_formats;
+mod properties;
+
 fn main() {
     let mut thread_ids = vec![];
     let dir = Path::new("config");

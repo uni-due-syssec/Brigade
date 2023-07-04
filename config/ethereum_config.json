@@ -1,6 +1,5 @@
 {
   "name": "Ethereum",
-  "chain_id": 32382,
   "rpc_url": "ws://127.0.0.1:8546",
   "contract_address": "0x071b8f8f375A1932BAAF356BcA98aAC0128bf5bf",
   "subscription_method": "eth_subscribe",

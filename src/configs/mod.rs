@@ -5,13 +5,13 @@ use ws::Result;
 
 use crate::socket;
 
+mod ethereum_config;
+
 /// Configuration for connecting to a Blockchain and getting the events
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct ChainConfig {
     /// Name of the Blockchain
     name: String,
-    /// Chain ID
-    chain_id: u64,
     /// RPC URL for Websocket
     rpc_url: String,
     /// Contract Address on the Blockchain
@@ -23,19 +23,14 @@ pub struct ChainConfig {
 }
 
 impl ChainConfig {
-    pub fn new(chain_id: u64, rpc_url: String, name: String, contract_address: String, subscription_method: String, filter: Value) -> Self {
+    pub fn new(rpc_url: String, name: String, contract_address: String, subscription_method: String, filter: Value) -> Self {
         Self {
-            chain_id,
             rpc_url,
             name,
             contract_address,
             subscription_method,
             filter,
         }
-    }
-
-    pub fn get_chain_id(&self) -> u64 {
-        self.chain_id
     }
 
     pub fn get_rpc_url(&self) -> String {
@@ -57,7 +52,6 @@ impl ChainConfig {
     pub fn connect(&self) -> Result<()> {
         ws::connect(self.rpc_url.clone(), |out| {
             // // Request subscription for Chain Events
-
             let request = json!({
                 "jsonrpc": "2.0",
                 "method": self.get_subscription_method(),
@@ -72,6 +66,7 @@ impl ChainConfig {
             // Process incoming WebSocket messages handled by the WebSocketClientHandler
             socket::WebSocketClientHandler{
                 // State of the Client
+                sender: out,
                 chain_name: self.name.clone()
             }
         }).unwrap();
