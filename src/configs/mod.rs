@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize, Deserializer};
 use serde_json::{json, Value};
 use ws::Result;
 
-use crate::socket;
+use crate::{socket, properties::Properties};
 
 mod ethereum_config;
 
@@ -64,11 +64,9 @@ impl ChainConfig {
             out.send(request.to_string()).unwrap();
     
             // Process incoming WebSocket messages handled by the WebSocketClientHandler
-            socket::WebSocketClientHandler{
+            socket::WebSocketClientHandler::new(
                 // State of the Client
-                sender: out,
-                chain_name: self.name.clone()
-            }
+                self.name.clone(),out, vec![])
         }).unwrap();
 
         Ok(())

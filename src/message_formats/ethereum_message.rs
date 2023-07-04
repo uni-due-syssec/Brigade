@@ -51,3 +51,58 @@ impl fmt::Display for EthereumConfirmMessage {
         write!(f, "{}", text)
     }
 }
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EthereumTransactionByHash {
+    pub id: i64,
+    pub jsonrpc: String,
+    pub result: EthereumTransactionByHashResult,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EthereumTransactionByHashResult {
+    pub access_list: Vec<Value>,
+    pub block_hash: String,
+    pub block_number: String,
+    pub chain_id: String,
+    pub from: String,
+    pub gas: String,
+    pub gas_price: String,
+    pub hash: String,
+    pub input: String,
+    pub max_fee_per_gas: String,
+    pub max_priority_fee_per_gas: String,
+    pub nonce: String,
+    pub r: String,
+    pub s: String,
+    pub to: String,
+    pub transaction_index: String,
+    #[serde(rename = "type")]
+    pub type_field: String,
+    pub v: String,
+    pub value: String,
+}
+
+impl fmt::Display for EthereumTransactionByHash {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let text = serde_json::to_string_pretty(self).unwrap();
+        write!(f, "{}", text)
+    }
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EthereumBalanceMessage {
+    pub id: i64,
+    pub jsonrpc: String,
+    pub result: String,
+}
+
+impl fmt::Display for EthereumBalanceMessage {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let text = serde_json::to_string_pretty(self).unwrap();
+        write!(f, "{}", text)
+    }
+}
