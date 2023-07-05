@@ -1,0 +1,14 @@
+{
+    "event": "Eventname",
+    "chain_name": "chain_name",
+    "properties": {
+        "prefix:name1": "function",
+        "prefix:name2": "function[0]"
+    },
+    "pattern": [
+        "prefix:name1",
+        "logic_operator",
+        "prefix:name2"
+    ]
+}
+

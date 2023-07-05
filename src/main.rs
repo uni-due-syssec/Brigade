@@ -8,6 +8,7 @@ mod configs;
 mod socket;
 mod message_formats;
 mod properties;
+mod utils;
 
 fn main() {
     let mut thread_ids = vec![];
