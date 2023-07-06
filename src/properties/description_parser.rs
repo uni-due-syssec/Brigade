@@ -2,6 +2,8 @@ use std::{collections::HashMap, path::PathBuf, fs, str::FromStr, fmt::Debug};
 
 use serde::{Deserialize, Serialize};
 
+use super::ast::LogicOperator;
+
 
 /// How should a description look like?
 /// 
@@ -32,7 +34,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct DescriptionParser{
+pub struct PatternDescription{
     pub event: String,
     #[serde(rename = "chain_name")]
     pub chain_name: String,
@@ -40,60 +42,18 @@ pub struct DescriptionParser{
     pub pattern: Vec<String>,
 }
 
-impl DescriptionParser{
+impl PatternDescription{
     /// The Parser should take the properties and get the correct property from the property struct
     /// Then the parser should take the pattern and check which vector entry is a logic operator
     /// The other entries should be matched with the properties found in the property struct
     /// The logic operators should be parsed into the LogicParser which returns true or false depending on the values.
     /// Only if all patterns return true, the parser should return true
     pub fn parse_pattern(self) -> bool{
+        todo!("Implement");
         false
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum LogicOperator {
-    Greater,
-    Less,
-    GreaterOrEqual,
-    LessOrEqual,
-    Equal,
-    NotEqual,
-    And,
-    Or,
-    Not,
-}
-
-impl LogicOperator {
-    pub fn to_string(&self) -> &str {
-        match self {
-            LogicOperator::Greater => ">",
-            LogicOperator::Less => "<",
-            LogicOperator::GreaterOrEqual => ">=",
-            LogicOperator::LessOrEqual => "<=",
-            LogicOperator::Equal => "==",
-            LogicOperator::NotEqual => "!=",
-            LogicOperator::And => "&&",
-            LogicOperator::Or => "||",
-            LogicOperator::Not => "!",
-        }
-    }
-
-    pub fn from_str(string: &str) -> Result<LogicOperator, &'static str> {
-        match string {
-            ">" => Ok(LogicOperator::Greater),
-            "<" => Ok(LogicOperator::Less),
-            ">=" => Ok(LogicOperator::GreaterOrEqual),
-            "<=" => Ok(LogicOperator::LessOrEqual),
-            "==" => Ok(LogicOperator::Equal),
-            "!=" => Ok(LogicOperator::NotEqual),
-            "&&" => Ok(LogicOperator::And),
-            "||" => Ok(LogicOperator::Or),
-            "!" => Ok(LogicOperator::Not),
-            _ => Err("Invalid Logic Operator"),
-        }
-    }
-}
 
 /// Parse a Logical Statement and return the Boolean
 #[derive(Debug, Clone)]
@@ -240,29 +200,11 @@ impl LogicParser<String>
     }
 }
 
-impl<T> LogicParser<LogicParser<T>>{
-    todo!("Implement Logic Parser for recursive Statement");
-}
-
-/// Check if the Logic evaluates to true
-macro_rules! parse_logic {
-    (val1: T, logic_operator: LogicOperator, val2: T) => {
-        assert_eq(LogicParser::new(val1, logic_operator, val2).check(), true);
-    };
-}
-
-/// Check if the Logic evaluates to true
-macro_rules! parse_logic_str {
-    (val1: String, logic_operator: LogicOperator, val2: String) => {
-        assert_eq(LogicParser::to_str_parser(val1, logic_operator, val2).unwrap().check_str(), true);
-    };
-}
-
 #[test]
 fn test_description_file_serialization(){
     let path = PathBuf::from("properties/property_definition.json");
     let content = fs::read_to_string(path).unwrap();
-    let descriptor: DescriptionParser = serde_json::from_str(&content).unwrap();
+    let descriptor: PatternDescription = serde_json::from_str(&content).unwrap();
 
     println!("{:?}", descriptor);
 }

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 mod description_parser;
+mod ast;
 
 /// List of properties
 /// 
