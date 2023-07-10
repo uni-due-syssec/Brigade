@@ -85,132 +85,153 @@ pub enum ASTNode {
     ConstantBool(bool),
     ConstantNumber(f64),
     ConstantString(String),
-    LogicOp(LogicOperator, Box<ASTNode>, Box<ASTNode>), // Branch node for logical operators
-    ArithmeticOp(ArithmeticOperator, Box<ASTNode>, Box<ASTNode>), // Branch node for arithmetic operators
+    UnaryArithmetic(ArithmeticOperator, Box<ASTNode>),
+    BinaryArithmetic(ArithmeticOperator, Box<ASTNode>, Box<ASTNode>),
+    UnaryLogic(LogicOperator, Box<ASTNode>),
+    BinaryLogic(LogicOperator, Box<ASTNode>, Box<ASTNode>),
 }
 
 /// AST Value which contains a constant value
-#[derive(Debug, Clone)]
-pub enum ASTValue {
+#[derive(Debug, Clone, PartialEq)]
+pub enum ASTConstant {
     Bool(bool),
     Number(f64),
     String(String),
 }
 
-impl ASTNode {
-    pub fn evaluate(&self) -> Result<ASTValue, &'static str> {
+impl ASTConstant{
+    pub fn get_constant_info(&self) -> (&str, String) {
         match self {
-            ASTNode::ConstantBool(val) => Ok(ASTValue::Bool(*val)),
-            ASTNode::ConstantNumber(val) => Ok(ASTValue::Number(*val)),
-            ASTNode::ConstantString(val) => Ok(ASTValue::String(val.clone())),
-            ASTNode::LogicOp(op, left, right) => {
-                let left_val = left.evaluate()?;
-                let right_val = right.evaluate()?;
-                match op {
-                    LogicOperator::Greater => {
-                        if let (ASTValue::Number(left), ASTValue::Number(right)) =
-                            (left_val, right_val)
-                        {
-                            Ok(ASTValue::Bool(left > right))
-                        } else {
-                            Err("Greater operator requires number operands.")
-                        }
-                    }
-                    LogicOperator::Less => {
-                        if let (ASTValue::Number(left), ASTValue::Number(right)) =
-                            (left_val, right_val)
-                        {
-                            Ok(ASTValue::Bool(left < right))
-                        } else {
-                            Err("Less operator requires number operands.")
-                        }
-                    }
-                    LogicOperator::GreaterOrEqual => {
-                        if let (ASTValue::Number(left), ASTValue::Number(right)) =
-                            (left_val, right_val)
-                        {
-                            Ok(ASTValue::Bool(left >= right))
-                        } else {
-                            Err("Greater or equal operator requires number operands.")
-                        }
-                    }
-                    LogicOperator::LessOrEqual => {
-                        if let (ASTValue::Number(left), ASTValue::Number(right)) =
-                            (left_val, right_val)
-                        {
-                            Ok(ASTValue::Bool(left <= right))
-                        } else {
-                            Err("Less or equal operator requires number operands.")
-                        }
-                    }
-                    LogicOperator::Equal => {
-                        if let (ASTValue::Number(left), ASTValue::Number(right)) =
-                            (left_val, right_val)
-                        {
-                            Ok(ASTValue::Bool(left == right))
-                        } else {
-                            Err("Equal operator requires number operands.")
-                        }
-                    }
-                    LogicOperator::NotEqual => {
-                        if let (ASTValue::Number(left), ASTValue::Number(right)) =
-                            (left_val, right_val)
-                        {
-                            Ok(ASTValue::Bool(left != right))
-                        } else {
-                            Err("Not equal operator requires number operands.")
-                        }
-                    }
-                    _ => Err("Unsupported logic operator."),
-                }
-            },
-            ASTNode::ArithmeticOp(op, left, right) => {
-                let left_val = left.evaluate()?;
-                let right_val = right.evaluate()?;
-                match op {
-                    ArithmeticOperator::Add =>if let (ASTValue::Number(left), ASTValue::Number(right)) = (left_val, right_val) {
-                        Ok(ASTValue::Number(left + right))
-                    }else{
-                        Err("Arithmetic ADD operator requires number operands.")
-                    },
-                    ArithmeticOperator::Subtract =>if let (ASTValue::Number(left), ASTValue::Number(right)) = (left_val, right_val) {
-                        Ok(ASTValue::Number(left - right))
-                    }else{
-                        Err("Arithmetic SUBTRACT operator requires number operands.")
-                    },
-                    ArithmeticOperator::Multiply =>if let (ASTValue::Number(left), ASTValue::Number(right)) = (left_val, right_val) {
-                        Ok(ASTValue::Number(left * right))
-                    }else{
-                        Err("Arithmetic MULTIPLY operator requires number operands.")
-                    },
-                    ArithmeticOperator::Divide =>if let (ASTValue::Number(left), ASTValue::Number(right)) = (left_val, right_val) {
-                        Ok(ASTValue::Number(left / right))
-                    }else{
-                        Err("Arithmetic DIVIDE operator requires number operands.")
-                    },
-                    ArithmeticOperator::Modulo =>if let (ASTValue::Number(left), ASTValue::Number(right)) = (left_val, right_val) {
-                        Ok(ASTValue::Number(left % right))
-                    }else{
-                        Err("Arithmetic MODULO operator requires number operands.")
-                    }
-                }
-            }
+            ASTConstant::Bool(value) => ("Bool", value.to_string()),
+            ASTConstant::Number(value) => ("Number", value.to_string()),
+            ASTConstant::String(value) => ("String", value.clone()),
         }
     }
 }
+
+impl ASTNode {
+    pub fn evaluate(&self) -> Result<ASTConstant, &'static str> {
+        match self {
+            ASTNode::ConstantBool(value) => Ok(ASTConstant::Bool(*value)),
+            ASTNode::ConstantNumber(value) => Ok(ASTConstant::Number(*value)),
+            ASTNode::ConstantString(value) => Ok(ASTConstant::String(value.clone())),
+            ASTNode::UnaryArithmetic(operator, value) => { // Implementation of Unary Arithmetic Operations
+                let val = value.evaluate()?;
+                match operator { 
+                    ArithmeticOperator::Subtract => {
+                        match val {
+                            ASTConstant::Number(value) => Ok(ASTConstant::Number(-value)),
+                            _ => Err("Not Implemented"),
+                        }
+                    },
+                    _ => Err("Not Implemented"),
+                }
+            }
+            ASTNode::BinaryArithmetic(operator, left, right) => { // Implementation of Binary Arithmetic Operations
+                let left = left.evaluate()?;
+                let right = right.evaluate()?;
+                match left {
+                    ASTConstant::Number(left) => {
+                        match right {
+                            ASTConstant::Number(right) => {
+                                match operator {
+                                    ArithmeticOperator::Add => Ok(ASTConstant::Number(left + right)),
+                                    ArithmeticOperator::Subtract => Ok(ASTConstant::Number(left - right)),
+                                    ArithmeticOperator::Multiply => Ok(ASTConstant::Number(left * right)),
+                                    ArithmeticOperator::Divide => Ok(ASTConstant::Number(left / right)),
+                                    ArithmeticOperator::Modulo => Ok(ASTConstant::Number(left % right)),
+                                    _ => Err("Not Implemented"),
+                                }
+                            },
+                            _ => Err("Not Implemented"),
+                        }
+                    }
+                    _ => Err("Not Implemented"),
+                }
+            },
+            ASTNode::UnaryLogic(operator, value) => {
+                let val = value.evaluate()?;
+                match val {
+                    ASTConstant::Bool(value) => {
+                        match operator {
+                        LogicOperator::Not => Ok(ASTConstant::Bool(!value)),
+                        _ => Err("Not Implemented"),
+                        }
+                    },
+                    _ => Err("Not Implemented"),
+                }
+            },
+            ASTNode::BinaryLogic(operator, left, right) => {
+                let left = left.evaluate()?;
+                let right = right.evaluate()?;
+                match left {
+                    ASTConstant::Bool(left) => {
+                        match right {
+                            ASTConstant::Bool(right) => {
+                                match operator {
+                                    LogicOperator::And => Ok(ASTConstant::Bool(left && right)),
+                                    LogicOperator::Or => Ok(ASTConstant::Bool(left || right)),
+                                    LogicOperator::Equal => Ok(ASTConstant::Bool(left == right)),
+                                    LogicOperator::NotEqual => Ok(ASTConstant::Bool(left != right)),
+                                    _ => Err("Not Implemented"),
+                                }
+                            },
+                            _ => Err("Not Implemented"),
+                        }
+                    },
+                    ASTConstant::Number(left) => {
+                        match right {
+                            ASTConstant::Number(right) => {
+                                match operator {
+                                    LogicOperator::Equal => Ok(ASTConstant::Bool(left == right)),
+                                    LogicOperator::NotEqual => Ok(ASTConstant::Bool(left != right)),
+                                    LogicOperator::Greater => Ok(ASTConstant::Bool(left > right)),
+                                    LogicOperator::Less => Ok(ASTConstant::Bool(left < right)),
+                                    LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(left >= right)),
+                                    LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(left <= right)),
+                                    _ => Err("Not Implemented"),
+                                }
+                            },
+                            _ => Err("Not Implemented"),
+                        }
+                    },
+                    ASTConstant::String(left) => {
+                        match right {
+                            ASTConstant::String(right) => {
+                                match operator {
+                                    LogicOperator::Equal => Ok(ASTConstant::Bool(left == right)),
+                                    LogicOperator::NotEqual => Ok(ASTConstant::Bool(left != right)),
+                                    _ => Err("Not Implemented"),
+                                }
+                            },
+                            _ => Err("Not Implemented"),
+                        }
+                    }
+                }
+            }
+            _ => Err("Not Implemented"),
+        }
+    }
+}
+
 
 #[test]
 fn test_ast(){
     // Example: 5 + 5 > 17 - 15
 
-    let exp_a = ASTNode::Constant::<u64>(5);
-    let exp_b = ASTNode::Constant::<u64>(5);
-    let exp_c = ASTNode::Constant::<u64>(17);
-    let exp_d = ASTNode::Constant::<u64>(15);
+    let exp_a = ASTNode::ConstantNumber(5.0);
+    let exp_b = ASTNode::ConstantNumber(5.0);
+    let exp_a_b = ASTNode::BinaryArithmetic(ArithmeticOperator::Add, Box::new(exp_a), Box::new(exp_b));
 
-    let exp_e = ASTNode::ArithmeticOp(ArithmeticOperator::Add, Box::new(exp_a), Box::new(exp_b));
-    let exp_f = ASTNode::ArithmeticOp(ArithmeticOperator::Subtract, Box::new(exp_c), Box::new(exp_d));
-    let exp_g = ASTNode::LogicOp(LogicOperator::Greater, Box::new(exp_e), Box::new(exp_f));
+    let exp_c = ASTNode::ConstantNumber(17.0);
+    let exp_d = ASTNode::ConstantNumber(15.0);
+    let exp_c_d = ASTNode::BinaryArithmetic(ArithmeticOperator::Subtract, Box::new(exp_c), Box::new(exp_d));
 
-    assert_eq!(exp_g.evaluate_bool().unwrap(), true);
+    let exp_g = ASTNode::BinaryLogic(LogicOperator::Greater, Box::new(exp_a_b), Box::new(exp_c_d));
+    
+    let val = exp_g.evaluate().unwrap();
+    let(const_type, value) = val.get_constant_info();
+    println!("{}: {}", const_type, value);
+
+    assert_eq!(value, "true");
 }
