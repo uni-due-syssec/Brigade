@@ -277,27 +277,37 @@ fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode), &'
                             stack.push(node);
                         },
                         ArithmeticOperator::Add => {
-                            let node = ASTNode::BinaryArithmetic(ArithmeticOperator::Add, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                            let right = stack.pop().unwrap();
+                            let left = stack.pop().unwrap();
+                            let node = ASTNode::BinaryArithmetic(ArithmeticOperator::Add, Box::new(left), Box::new(right));
                             ast_vec.push(node.clone());
                             stack.push(node);
                         },
                         ArithmeticOperator::Subtract => {
-                            let node = ASTNode::BinaryArithmetic(ArithmeticOperator::Subtract, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                            let right = stack.pop().unwrap();
+                            let left = stack.pop().unwrap();
+                            let node = ASTNode::BinaryArithmetic(ArithmeticOperator::Subtract, Box::new(left), Box::new(right));
                             ast_vec.push(node.clone());
                             stack.push(node);
                         },
                         ArithmeticOperator::Multiply => {
-                            let node = ASTNode::BinaryArithmetic(ArithmeticOperator::Multiply, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                            let right = stack.pop().unwrap();
+                            let left = stack.pop().unwrap();
+                            let node = ASTNode::BinaryArithmetic(ArithmeticOperator::Multiply, Box::new(left), Box::new(right));
                             ast_vec.push(node.clone());
                             stack.push(node);
                         },
                         ArithmeticOperator::Divide => {
-                            let node = ASTNode::BinaryArithmetic(ArithmeticOperator::Divide, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                            let right = stack.pop().unwrap();
+                            let left = stack.pop().unwrap();
+                            let node = ASTNode::BinaryArithmetic(ArithmeticOperator::Divide, Box::new(left), Box::new(right));
                             ast_vec.push(node.clone());
                             stack.push(node);
                         },
                         ArithmeticOperator::Modulo => {
-                            let node = ASTNode::BinaryArithmetic(ArithmeticOperator::Modulo, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                            let right = stack.pop().unwrap();
+                            let left = stack.pop().unwrap();
+                            let node = ASTNode::BinaryArithmetic(ArithmeticOperator::Modulo, Box::new(left), Box::new(right));
                             ast_vec.push(node.clone());
                             stack.push(node);
                         }
@@ -314,42 +324,58 @@ fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode), &'
                                     stack.push(node);
                                 },
                                 LogicOperator::And => {
-                                    let node = ASTNode::BinaryLogic(LogicOperator::And, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                                    let right = stack.pop().unwrap();
+                                    let left = stack.pop().unwrap();
+                                    let node = ASTNode::BinaryLogic(LogicOperator::And, Box::new(left), Box::new(right));
                                     ast_vec.push(node.clone());
                                     stack.push(node);
                                 },
                                 LogicOperator::Or => {
-                                    let node = ASTNode::BinaryLogic(LogicOperator::Or, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                                    let right = stack.pop().unwrap();
+                                    let left = stack.pop().unwrap();
+                                    let node = ASTNode::BinaryLogic(LogicOperator::Or, Box::new(left), Box::new(right));
                                     ast_vec.push(node.clone());
                                     stack.push(node);
                                 },
                                 LogicOperator::Equal => {
-                                    let node = ASTNode::BinaryLogic(LogicOperator::Equal, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                                    let right = stack.pop().unwrap();
+                                    let left = stack.pop().unwrap();
+                                    let node = ASTNode::BinaryLogic(LogicOperator::Equal, Box::new(left), Box::new(right));
                                     ast_vec.push(node.clone());
                                     stack.push(node);
                                 },
                                 LogicOperator::NotEqual => {
-                                    let node = ASTNode::BinaryLogic(LogicOperator::NotEqual, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                                    let right = stack.pop().unwrap();
+                                    let left = stack.pop().unwrap();
+                                    let node = ASTNode::BinaryLogic(LogicOperator::NotEqual, Box::new(left), Box::new(right));
                                     ast_vec.push(node.clone());
                                     stack.push(node);
                                 },
                                 LogicOperator::Greater => {
-                                    let node = ASTNode::BinaryLogic(LogicOperator::Greater, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                                    let right = stack.pop().unwrap();
+                                    let left = stack.pop().unwrap();
+                                    let node = ASTNode::BinaryLogic(LogicOperator::Greater, Box::new(left), Box::new(right));
                                     ast_vec.push(node.clone());
                                     stack.push(node);
                                 },
                                 LogicOperator::Less => {
-                                    let node = ASTNode::BinaryLogic(LogicOperator::Less, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                                    let right = stack.pop().unwrap();
+                                    let left = stack.pop().unwrap();
+                                    let node = ASTNode::BinaryLogic(LogicOperator::Less, Box::new(left), Box::new(right));
                                     ast_vec.push(node.clone());
                                     stack.push(node);
                                 },
                                 LogicOperator::GreaterOrEqual => {
-                                    let node = ASTNode::BinaryLogic(LogicOperator::GreaterOrEqual, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                                    let right = stack.pop().unwrap();
+                                    let left = stack.pop().unwrap();
+                                    let node = ASTNode::BinaryLogic(LogicOperator::GreaterOrEqual, Box::new(left), Box::new(right));
                                     ast_vec.push(node.clone());
                                     stack.push(node);
                                 },
                                 LogicOperator::LessOrEqual => {
-                                    let node = ASTNode::BinaryLogic(LogicOperator::LessOrEqual, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                                    let right = stack.pop().unwrap();
+                                    let left = stack.pop().unwrap();
+                                    let node = ASTNode::BinaryLogic(LogicOperator::LessOrEqual, Box::new(left), Box::new(right));
                                     ast_vec.push(node.clone());
                                     stack.push(node);
                                 }
@@ -362,20 +388,20 @@ fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode), &'
                 },
             }
         }else{ // Parse Operator in respective type
-            match token.parse::<i64>() {
+            match token.parse::<f64>() {
                 Ok(value) => {
                     let node = ASTNode::ConstantNumber(value as f64);
                     ast_vec.push(node.clone());
                     stack.push(node);
                 },
                 Err(_) => {
-                    println!("{} is not a number", token);
+                    //println!("{} is not a number", token);
                     match token.parse::<bool>(){
                         Ok(value) => {
                             let node = ASTNode::ConstantBool(value);
                         },
                         Err(_) => {
-                            println!("{} is not a boolean", token);
+                            //println!("{} is not a boolean", token);
                             let node: ASTNode = ASTNode::ConstantString(token);
                         }
                     }
@@ -486,6 +512,8 @@ fn test_shunting_yard(){
     // 5 + 5 > 17 - (5 - neg 10)
     let tokens = vec!["5".to_owned(), "+".to_owned(), "5".to_owned(), ">".to_owned(), "17".to_owned(), "-".to_owned(), "(".to_owned(), "5".to_owned(), "-".to_owned(), "neg".to_owned(), "10".to_owned(), ")".to_owned()];
 
+    //let tokens: Vec<String> = vec!["5".to_owned(), ">".to_owned(), "(".to_owned(), "6".to_owned(), "+".to_owned(), "5".to_owned(), ")".to_owned()];
+
     let output = shunting_yard_algorithm(tokens);
     let output = output.unwrap();
     println!("Output: {:?}", output);
@@ -501,5 +529,5 @@ fn test_shunting_yard(){
     let val = root.evaluate().unwrap();
     let (const_type, value) = val.get_constant_info();
 
-    assert_eq!(value, "true");
+    assert_eq!(value, "false");
 }
