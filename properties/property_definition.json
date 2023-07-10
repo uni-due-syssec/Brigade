@@ -6,9 +6,8 @@
         "prefix:name2": "function[0]"
     },
     "pattern": [
-        "prefix:name1",
-        "logic_operator",
-        "prefix:name2"
+        "pattern",
+        "pattern2"
     ]
 }
 

@@ -2,15 +2,9 @@
     "event": "SendEthToSol",
     "chain_name": "ethereum",
     "properties": {
-        "from": "get_transaction_By_Hash.from",
-        "balance": "get_balance(from)",
-        "balance_before": "get_balance(from)",
-        "value": "get_transaction_By_Hash.value"
+        "additional_variables": "getRandomStuff().result.params.tx"
     },
     "pattern": [
-        "prefix:name1",
-        "logic_operator",
-        "prefix:name2"
+        "balance_before + value == balance"
     ]
 }
-

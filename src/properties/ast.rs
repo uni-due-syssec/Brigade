@@ -1,5 +1,7 @@
 use std::collections::VecDeque;
 
+use tokio::task::LocalEnterGuard;
+
 /// This file describes an Abstract Syntax Tree which should contain as leaves constants and the branches refer to logical or arithmetic operators.
 
 
@@ -217,6 +219,27 @@ impl ASTNode {
             _ => Err("Not Implemented"),
         }
     }
+
+    fn format(&self) -> String {
+        match self {
+            ASTNode::ConstantBool(value) => value.to_string(),
+            ASTNode::ConstantNumber(value) => value.to_string(),
+            ASTNode::ConstantString(value) => value.clone(),
+            ASTNode::UnaryArithmetic(operator, value) => {
+                format!("\t{}\t\n{}", operator.to_string(), value.format())
+            },
+            ASTNode::BinaryArithmetic(operator, left, right) => {
+                format!("\t{}\n{}\t\t{}", operator.to_string(), left.format(), right.format())
+            },
+            ASTNode::UnaryLogic(operator, value) => {
+                format!("\t{}\t\n{}", operator.to_string(), value.format())
+            },
+            ASTNode::BinaryLogic(operator, left, right) => {
+                format!("\t{}\n{}\t\t{}", operator.to_string(), left.format(), right.format())
+            }
+        }
+    }
+
 }
 
 macro_rules! build_ast {
@@ -238,13 +261,106 @@ macro_rules! build_ast {
     };
 }
 
-fn parse_postfix(tokens: VecDeque<String>) -> Result<Vec<ASTNode>, &'static str>{
+/// Build the tree from a Vec of tokens and return the AST and the root node
+fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode), &'static str>{
     let mut ast_vec: Vec<ASTNode> = vec![];
     let mut stack: Vec<ASTNode> = vec![];
 
     for token in tokens {
         if is_operator(token.as_str()) {
-            todo!();
+            match ArithmeticOperator::from_str(token.as_str()) {
+                Ok(value) => {
+                    match value {
+                        ArithmeticOperator::Negate => {
+                            let node = ASTNode::UnaryArithmetic(ArithmeticOperator::Negate, Box::new(stack.pop().unwrap()));
+                            ast_vec.push(node.clone());
+                            stack.push(node);
+                        },
+                        ArithmeticOperator::Add => {
+                            let node = ASTNode::BinaryArithmetic(ArithmeticOperator::Add, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                            ast_vec.push(node.clone());
+                            stack.push(node);
+                        },
+                        ArithmeticOperator::Subtract => {
+                            let node = ASTNode::BinaryArithmetic(ArithmeticOperator::Subtract, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                            ast_vec.push(node.clone());
+                            stack.push(node);
+                        },
+                        ArithmeticOperator::Multiply => {
+                            let node = ASTNode::BinaryArithmetic(ArithmeticOperator::Multiply, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                            ast_vec.push(node.clone());
+                            stack.push(node);
+                        },
+                        ArithmeticOperator::Divide => {
+                            let node = ASTNode::BinaryArithmetic(ArithmeticOperator::Divide, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                            ast_vec.push(node.clone());
+                            stack.push(node);
+                        },
+                        ArithmeticOperator::Modulo => {
+                            let node = ASTNode::BinaryArithmetic(ArithmeticOperator::Modulo, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                            ast_vec.push(node.clone());
+                            stack.push(node);
+                        }
+                    }
+                },
+                Err(_) => {
+                    //println!("{} is not an Arithmetic Operator", token);
+                    match LogicOperator::from_str(token.as_str()) {
+                        Ok(value) => {
+                            match value {
+                                LogicOperator::Not => {
+                                    let node = ASTNode::UnaryLogic(LogicOperator::Not, Box::new(stack.pop().unwrap()));
+                                    ast_vec.push(node.clone());
+                                    stack.push(node);
+                                },
+                                LogicOperator::And => {
+                                    let node = ASTNode::BinaryLogic(LogicOperator::And, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                                    ast_vec.push(node.clone());
+                                    stack.push(node);
+                                },
+                                LogicOperator::Or => {
+                                    let node = ASTNode::BinaryLogic(LogicOperator::Or, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                                    ast_vec.push(node.clone());
+                                    stack.push(node);
+                                },
+                                LogicOperator::Equal => {
+                                    let node = ASTNode::BinaryLogic(LogicOperator::Equal, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                                    ast_vec.push(node.clone());
+                                    stack.push(node);
+                                },
+                                LogicOperator::NotEqual => {
+                                    let node = ASTNode::BinaryLogic(LogicOperator::NotEqual, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                                    ast_vec.push(node.clone());
+                                    stack.push(node);
+                                },
+                                LogicOperator::Greater => {
+                                    let node = ASTNode::BinaryLogic(LogicOperator::Greater, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                                    ast_vec.push(node.clone());
+                                    stack.push(node);
+                                },
+                                LogicOperator::Less => {
+                                    let node = ASTNode::BinaryLogic(LogicOperator::Less, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                                    ast_vec.push(node.clone());
+                                    stack.push(node);
+                                },
+                                LogicOperator::GreaterOrEqual => {
+                                    let node = ASTNode::BinaryLogic(LogicOperator::GreaterOrEqual, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                                    ast_vec.push(node.clone());
+                                    stack.push(node);
+                                },
+                                LogicOperator::LessOrEqual => {
+                                    let node = ASTNode::BinaryLogic(LogicOperator::LessOrEqual, Box::new(stack.pop().unwrap()), Box::new(stack.pop().unwrap()));
+                                    ast_vec.push(node.clone());
+                                    stack.push(node);
+                                }
+                            }
+                        },
+                        Err(_) => {
+                            println!("{} is not an Logic Operator", token);
+                        }
+                    }
+                },
+            }
         }else{ // Parse Operator in respective type
             match token.parse::<i64>() {
                 Ok(value) => {
@@ -267,57 +383,15 @@ fn parse_postfix(tokens: VecDeque<String>) -> Result<Vec<ASTNode>, &'static str>
             }
         }
     }
-    Ok(ast_vec)
+
+    let root = stack.pop().unwrap();
+
+    Ok((ast_vec, root))
 }
 
 fn shunting_yard_algorithm(tokens: Vec<String>) -> Result<VecDeque<String>, &'static str> {
     let mut stack: Vec<String> = vec![]; // Stack for operators
     let mut output_queue: VecDeque<String> = VecDeque::new();
-
-    // for token in tokens.iter(){
-    //     println!("Token: {}", token);
-    //     if !is_operator(token){ // Operands directly to output queue
-    //         println!("Token {} to Ouput", token);
-    //         output_queue.push_back(token.to_string());
-    //     }else { // Process Operators
-    //         if token == "(" { // If token is opening parenthesis, push to stack
-    //             println!("Pushed ( to Stack");
-    //             stack.push(token.to_string());
-    //         }else if token == ")" { // If token is closing parenthesis
-    //             while let Some(top) = stack.pop() {
-    //                 if top == "(" {
-    //                     println!("Discarded (");
-    //                     break;
-    //                 } else {
-    //                     output_queue.push_back(top);
-    //                 }
-    //             }
-    //         }else{ // Process Operators
-    //             while let Some(top) = stack.last() {
-    //                 if let Some(token_precedence) = operator_precedence(token) {
-    //                     if let Some(top_precedence) = operator_precedence(top) {
-    //                         if token_precedence > top_precedence {
-    //                             break;
-    //                         }
-    //                     }
-    //                 }
-    //                 output_queue.push_back(stack.pop().unwrap());
-    //             }
-    //             stack.push(token.to_string());
-    //         }
-    //     }
-    // }
-
-    // // Empty Stack
-    // for token in stack {
-    //     if token == "(" || token == ")" {
-    //         return Err("Unmatched Parentheses: Left on Stack");
-    //     }
-    //     output_queue.push_back(token.clone());
-    //     println!("Token {} to Ouput", token);
-    // }
-    // println!("Output Queue: {:?}", output_queue);
-    
 
     for token in tokens.iter() {
         if !is_operator(token){
@@ -409,14 +483,23 @@ fn test_ast_macro(){
 
 #[test]
 fn test_shunting_yard(){
+    // 5 + 5 > 17 - (5 - neg 10)
     let tokens = vec!["5".to_owned(), "+".to_owned(), "5".to_owned(), ">".to_owned(), "17".to_owned(), "-".to_owned(), "(".to_owned(), "5".to_owned(), "-".to_owned(), "neg".to_owned(), "10".to_owned(), ")".to_owned()];
 
     let output = shunting_yard_algorithm(tokens);
     let output = output.unwrap();
+    println!("Output: {:?}", output);
     for o in output.iter(){
         print!("{}", o);
     }
     println!("");
     
-    let expected_out = ["5", "5", "17", "+", "5", "10", "+", "-"];
+    let (ast, root) = parse_postfix(output).unwrap();
+
+    println!("Root: {}", root.format());
+
+    let val = root.evaluate().unwrap();
+    let (const_type, value) = val.get_constant_info();
+
+    assert_eq!(value, "true");
 }
