@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 /// This file describes an Abstract Syntax Tree which should contain as leaves constants and the branches refer to logical or arithmetic operators.
 
 
@@ -54,6 +56,7 @@ pub enum ArithmeticOperator {
     Multiply,
     Divide,
     Modulo,
+    Negate,
 }
 
 impl ArithmeticOperator{
@@ -64,6 +67,7 @@ impl ArithmeticOperator{
             ArithmeticOperator::Multiply => "*",
             ArithmeticOperator::Divide => "/",
             ArithmeticOperator::Modulo => "%",
+            ArithmeticOperator::Negate => "neg",
         }
     }
 
@@ -74,6 +78,7 @@ impl ArithmeticOperator{
             "*" => Ok(ArithmeticOperator::Multiply),
             "/" => Ok(ArithmeticOperator::Divide),
             "%" => Ok(ArithmeticOperator::Modulo),
+            "neg" => Ok(ArithmeticOperator::Negate),
             _ => Err("Invalid Arithmetic Operator"),
         }
     }
@@ -118,7 +123,7 @@ impl ASTNode {
             ASTNode::UnaryArithmetic(operator, value) => { // Implementation of Unary Arithmetic Operations
                 let val = value.evaluate()?;
                 match operator { 
-                    ArithmeticOperator::Subtract => {
+                    ArithmeticOperator::Negate => {
                         match val {
                             ASTConstant::Number(value) => Ok(ASTConstant::Number(-value)),
                             _ => Err("Not Implemented"),
@@ -214,6 +219,167 @@ impl ASTNode {
     }
 }
 
+macro_rules! build_ast {
+    ($str_pattern:expr) => {
+        let split_string = $str_pattern.split(" ").collect::<Vec<&str>>();
+        let mut ast_vec: Vec<ASTNode> = vec![];
+        for s in split_string.iter() {
+            println!("{}", s);
+            match s.parse::<i64>() {
+                Ok(value) => {
+                    ast_vec.push(ASTNode::ConstantNumber(value as f64));
+                },
+                Err(_) => {
+                    println!("{} is not a number", s);
+                    
+                }
+            }
+        }
+    };
+}
+
+fn parse_postfix(tokens: VecDeque<String>) -> Result<Vec<ASTNode>, &'static str>{
+    let mut ast_vec: Vec<ASTNode> = vec![];
+    let mut stack: Vec<ASTNode> = vec![];
+
+    for token in tokens {
+        if is_operator(token.as_str()) {
+            todo!();
+        }else{ // Parse Operator in respective type
+            match token.parse::<i64>() {
+                Ok(value) => {
+                    let node = ASTNode::ConstantNumber(value as f64);
+                    ast_vec.push(node.clone());
+                    stack.push(node);
+                },
+                Err(_) => {
+                    println!("{} is not a number", token);
+                    match token.parse::<bool>(){
+                        Ok(value) => {
+                            let node = ASTNode::ConstantBool(value);
+                        },
+                        Err(_) => {
+                            println!("{} is not a boolean", token);
+                            let node: ASTNode = ASTNode::ConstantString(token);
+                        }
+                    }
+                },
+            }
+        }
+    }
+    Ok(ast_vec)
+}
+
+fn shunting_yard_algorithm(tokens: Vec<String>) -> Result<VecDeque<String>, &'static str> {
+    let mut stack: Vec<String> = vec![]; // Stack for operators
+    let mut output_queue: VecDeque<String> = VecDeque::new();
+
+    // for token in tokens.iter(){
+    //     println!("Token: {}", token);
+    //     if !is_operator(token){ // Operands directly to output queue
+    //         println!("Token {} to Ouput", token);
+    //         output_queue.push_back(token.to_string());
+    //     }else { // Process Operators
+    //         if token == "(" { // If token is opening parenthesis, push to stack
+    //             println!("Pushed ( to Stack");
+    //             stack.push(token.to_string());
+    //         }else if token == ")" { // If token is closing parenthesis
+    //             while let Some(top) = stack.pop() {
+    //                 if top == "(" {
+    //                     println!("Discarded (");
+    //                     break;
+    //                 } else {
+    //                     output_queue.push_back(top);
+    //                 }
+    //             }
+    //         }else{ // Process Operators
+    //             while let Some(top) = stack.last() {
+    //                 if let Some(token_precedence) = operator_precedence(token) {
+    //                     if let Some(top_precedence) = operator_precedence(top) {
+    //                         if token_precedence > top_precedence {
+    //                             break;
+    //                         }
+    //                     }
+    //                 }
+    //                 output_queue.push_back(stack.pop().unwrap());
+    //             }
+    //             stack.push(token.to_string());
+    //         }
+    //     }
+    // }
+
+    // // Empty Stack
+    // for token in stack {
+    //     if token == "(" || token == ")" {
+    //         return Err("Unmatched Parentheses: Left on Stack");
+    //     }
+    //     output_queue.push_back(token.clone());
+    //     println!("Token {} to Ouput", token);
+    // }
+    // println!("Output Queue: {:?}", output_queue);
+    
+
+    for token in tokens.iter() {
+        if !is_operator(token){
+            output_queue.push_back(token.clone());
+        }else{
+            match token.as_str() {
+                "(" => {
+                    stack.push(token.to_string());
+                },
+                ")" => {
+                    while stack.last() != Some(&"(".to_owned()) {
+                        output_queue.push_back(stack.pop().unwrap());
+                        if stack.is_empty() {
+                            return Err("Unmatched Parentheses: Empty Stack. No preceeding parentheses");
+                        }
+                    }
+                    stack.pop(); // Remove parenthesis
+                },
+                _ => {
+                    while !stack.is_empty() && is_operator(stack.last().unwrap()) && operator_precedence(token) >= operator_precedence(stack.last().unwrap()) {
+                        output_queue.push_back(stack.pop().unwrap());
+                    }
+                    stack.push(token.to_string());
+                }
+            }
+        }
+    }
+
+    while !stack.is_empty() {
+        let val = stack.pop().unwrap();
+        if val == "(" {
+            return Err("Unmatched Parentheses: Leftover on Stack. More parentheses are opening than closing");
+        }
+        output_queue.push_back(val);
+    }
+
+    Ok(output_queue)
+}
+
+/// Return the precedence level of the operator
+fn operator_precedence(operator: &str) -> Option<u8> {
+    match operator {
+        "||" => Some(0),                        // Or
+        "&&" => Some(1),                        // And
+        "==" | "!=" => Some(2),                 // Equality
+        "<" | ">" | "<=" | ">=" => Some(3),     // Comparison
+        "+" | "-" => Some(4),                   // Addition, Subtraction
+        "*" | "/" | "%" => Some(5),             // Multiplication, Division, and Modulo
+        "!" | "neg" => Some(6),                 // Unary Operators
+        "(" | ")" => Some(7),                   // Parentheses is highest level
+        _ => None,                              // No precedence for other operators
+    }
+}
+
+
+/// Is the token an Operator
+fn is_operator(token: &str) -> bool{
+    token == "+" || token == "-" || token == "*" || token == "/" || token == "%"
+    || token == "||" || token == "&&" || token == "==" || token == "!=" || token == "!"
+    || token == "<" || token == "<=" || token == ">" || token == ">=" || token == "(" 
+    || token == ")" || token == "neg"
+}
 
 #[test]
 fn test_ast(){
@@ -234,4 +400,23 @@ fn test_ast(){
     println!("{}: {}", const_type, value);
 
     assert_eq!(value, "true");
+}
+
+#[test]
+fn test_ast_macro(){
+    build_ast!("5 + 5 > 17 - 15");
+}
+
+#[test]
+fn test_shunting_yard(){
+    let tokens = vec!["5".to_owned(), "+".to_owned(), "5".to_owned(), ">".to_owned(), "17".to_owned(), "-".to_owned(), "(".to_owned(), "5".to_owned(), "-".to_owned(), "neg".to_owned(), "10".to_owned(), ")".to_owned()];
+
+    let output = shunting_yard_algorithm(tokens);
+    let output = output.unwrap();
+    for o in output.iter(){
+        print!("{}", o);
+    }
+    println!("");
+    
+    let expected_out = ["5", "5", "17", "+", "5", "10", "+", "-"];
 }
