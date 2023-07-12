@@ -1,10 +1,16 @@
 use std::collections::VecDeque;
+use std::fmt::format;
+
+use crate::{get_var, set_var};
 
 use super::error::{self, ASTError};
 
-use super::environment::{get_variable, VariableMap, get_variable_map_instance};
+use super::environment::{get_variable, VariableMap, get_variable_map_instance, VarValues};
+use std::str::FromStr;
 
 /// This file describes an Abstract Syntax Tree which should contain as leaves constants and the branches refer to logical or arithmetic operators.
+/// The AST consists of Nodes see ASTNode struct
+/// When evaluating the AST an ASTConstant is returned. See ASTConstant struct
 
 
 /// A Logical Operator which refers to Logical Statements returning either true or false
@@ -88,17 +94,60 @@ impl ArithmeticOperator{
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum Functions{
+    Foreach, // foreach ASTNode the expression in the {} curly brackets must be evaluated
+    Contains, // Returns true if ASTNode Array contains a ASTNode value
+    At, // Returns the ASTNode value at index
+}
+
+impl Functions{
+    pub fn to_string(&self) -> &str {
+        match self {
+            Functions::Foreach => "foreach",
+            Functions::Contains => "contains",
+            Functions::At => "at",
+        }
+    }
+
+    pub fn from_str(string: &str) -> Result<Functions, ASTError> {
+        match string {
+            "foreach" => Ok(Functions::Foreach),
+            "contains" => Ok(Functions::Contains),
+            _ => Err(ASTError::InvalidFunction(string.to_owned())),
+        }
+    }
+
+    pub fn get_args(string: &str) -> Option<Vec<String>> {
+        let s = string[0..string.len()-1].to_owned();
+        Some(s.split(",").map(|s| s.trim().to_string()).collect())
+    }
+}
+
 /// AST Node which contains leaves and branches for an Abstract Syntax Tree
 #[derive(Debug, Clone)]
 pub enum ASTNode {
+
+    // Constants
     ConstantBool(bool),
     ConstantNumber(f64),
     ConstantString(String),
+    Array(Vec<Box<ASTNode>>),
+    // arr.foreach() 
+    // arr.contains()
+    // arr[0] as ASTNode 
+    
+    // Variable
     Variable(String, &'static VariableMap), // String points to a variable on the VariableMap
+    
+    // Operators
     UnaryArithmetic(ArithmeticOperator, Box<ASTNode>),
     BinaryArithmetic(ArithmeticOperator, Box<ASTNode>, Box<ASTNode>),
     UnaryLogic(LogicOperator, Box<ASTNode>),
     BinaryLogic(LogicOperator, Box<ASTNode>, Box<ASTNode>),
+
+    // Functions
+    ASTFunction(Functions, Vec<Box<ASTNode>>),
 }
 
 /// AST Value which contains a constant value
@@ -107,6 +156,7 @@ pub enum ASTConstant {
     Bool(bool),
     Number(f64),
     String(String),
+    Array(Vec<ASTConstant>),
 }
 
 impl ASTConstant{
@@ -115,18 +165,40 @@ impl ASTConstant{
             ASTConstant::Bool(value) => ("Bool", value.to_string()),
             ASTConstant::Number(value) => ("Number", value.to_string()),
             ASTConstant::String(value) => ("String", value.clone()),
+            ASTConstant::Array(value) => ("Array", format!("{:?}", value)),
+        }
+    }
+
+    pub fn get_value(&self) -> String {
+        match self {
+            ASTConstant::Bool(value) => value.to_string(),
+            ASTConstant::Number(value) => value.to_string(),
+            ASTConstant::String(value) => value.clone(),
+            ASTConstant::Array(value) => {
+                let s = value.iter().map(|value| value.get_value()).collect::<Vec<String>>().join(",");
+                return format!("[{}]", s);
+            }
         }
     }
 
     pub fn parse(value: String) -> Self {
-        match value.parse::<f64>() {
-            Ok(value) => ASTConstant::Number(value),
-            Err(_) => {
-                match value.parse::<bool>() {
-                    Ok(value) => ASTConstant::Bool(value),
-                    Err(_) => ASTConstant::String(value),
-                }
-            },
+        if value.starts_with("["){
+            let v = value[1..value.len()-1].split(",").map(|x: &str| x.to_string()).collect::<Vec<String>>();
+            let mut arr = Vec::new();
+            for s in v.iter(){
+                arr.push(ASTConstant::parse(s.to_string()));
+            }
+            ASTConstant::Array(arr)
+        }else{
+            match value.parse::<f64>() {
+                Ok(value) => ASTConstant::Number(value),
+                Err(_) => {
+                    match value.parse::<bool>() {
+                        Ok(value) => ASTConstant::Bool(value),
+                        Err(_) => ASTConstant::String(value),
+                    }
+                },
+            }
         }
     }
 }
@@ -142,7 +214,7 @@ impl ASTNode {
                 match get_variable(map_ref, name) {
                     Some(value) => {
                         println!("{:?}", value);
-                        Ok(ASTConstant::parse(value))
+                        Ok(value.evaluate()?)
                     },
                     None => Err(ASTError::VariableNotFound { var: name.clone() }),
                 }
@@ -239,8 +311,47 @@ impl ASTNode {
                             _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
                         }
                     }
+                    ASTConstant::Array(_) => todo!("Arrays binary logic operations"),
                 }
             }
+            ASTNode::ASTFunction(function_name, args) => {
+                match function_name {
+                    Functions::Foreach => {
+                        todo!()
+                    },
+                    Functions::Contains => todo!(),
+                    Functions::At => {
+                        let set = args[0].evaluate()?;
+                        let index = args[1].evaluate()?;
+
+                        let idx = index.get_value().parse::<usize>().expect("index must be an integer");
+
+                        match set {
+                            ASTConstant::Array(arr)=> {
+                                let entry = &arr[idx];
+                                match entry {
+                                    ASTConstant::Bool(value) => {
+                                        Ok(ASTConstant::Bool(*value))
+                                    },
+                                    ASTConstant::Number(value) => {
+                                        Ok(ASTConstant::Number(*value))
+                                    },
+                                    ASTConstant::String(value) => {
+                                        Ok(ASTConstant::String(value.to_string()))
+                                    }
+                                    ASTConstant::Array(_) => todo!("Implement multidimensional arrays"),
+                                }
+                            },
+                            _ => Err(ASTError::InvalidFunctionInvocation("at".to_owned())),
+                        }
+                        
+                    },
+                }
+            },
+            ASTNode::Array(_) => {
+                println!("Let Functions handle arrays");
+                Ok(ASTConstant::Number(1.0))
+            },
         }
     }
 
@@ -249,7 +360,7 @@ impl ASTNode {
             ASTNode::ConstantBool(value) => value.to_string(),
             ASTNode::ConstantNumber(value) => value.to_string(),
             ASTNode::ConstantString(value) => value.clone(),
-            ASTNode::Variable(name, map_ref) => get_variable(map_ref, name).unwrap().to_string(),
+            ASTNode::Variable(name, map_ref) => get_var!(value name.as_str()).unwrap(),
             ASTNode::UnaryArithmetic(operator, value) => {
                 format!("\t{}\t\n{}", operator.to_string(), value.format())
             },
@@ -262,13 +373,15 @@ impl ASTNode {
             ASTNode::BinaryLogic(operator, left, right) => {
                 format!("\t{}\n{}\t\t{}", operator.to_string(), left.format(), right.format())
             }
+            ASTNode::Array(values) => format!("{}\n", values.iter().map(|value| value.format()).collect::<Vec<String>>().join("\n")),
+            ASTNode::ASTFunction(function_name, params) => format!("{}({})", function_name.to_string(), params.iter().map(|value| value.format()).collect::<Vec<String>>().join("\n")),
         }
     }
 
 }
 
 /// Build the tree from a Vec of tokens and return the AST and the root node
-fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode), &'static str>{
+fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode), ASTError>{
     let mut ast_vec: Vec<ASTNode> = vec![];
     let mut stack: Vec<ASTNode> = vec![];
 
@@ -395,9 +508,45 @@ fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode), &'
             }
         }else{ // Parse Operand in respective type
             if token.starts_with("$"){ // If the token starts with $ a variable is used
-                let node = ASTNode::Variable(token[1..].to_string(), get_variable_map_instance());
-                ast_vec.push(node.clone());
-                stack.push(node);
+
+                if token.contains("."){
+                    let parts: Vec<&str> = token.split(".").collect();
+                    let func: Vec<&str> = str::split(parts[1], "(").collect(); // example: at(1) -> at, 1)
+                    let args = Functions::get_args(func[1]);
+                    match func[0] {
+                        "at" => {
+                            if let Some(arg) = args{
+                                if arg.len() != 1{
+                                    return Err(ASTError::InvalidFunctionParameter("at".to_owned()))
+                                }
+                                // At expects a number as the index of the array.
+                                let node = ASTNode::ASTFunction(Functions::At, vec![
+                                    Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
+                                    Box::new(ASTNode::ConstantNumber(arg[0].clone().parse::<f64>().unwrap()))   // Argument to the function
+                                    ]);
+                                ast_vec.push(node.clone());
+                                stack.push(node);
+                                println!("Pushed");
+                            }else{
+                                return Err(ASTError::InvalidFunctionParameter("at".to_owned()))
+                            }
+                        },
+                        "foreach" => {
+                            todo!("Implement foreach");
+                        },
+                        "contains" => {
+                            todo!("Implement contains");
+                        },
+                        _ => {
+                            todo!("Implement more functions");
+                        }
+                    }
+                    
+                }else {  
+                    let node = ASTNode::Variable(token[1..].to_string(), get_variable_map_instance());
+                    ast_vec.push(node.clone());
+                    stack.push(node);
+                }
             }else{
                 match token.parse::<f64>() {
                     Ok(value) => {
@@ -491,15 +640,15 @@ fn shunting_yard_algorithm(tokens: Vec<String>) -> Result<VecDeque<String>, &'st
 /// Return the precedence level of the operator
 fn operator_precedence(operator: &str) -> Option<u8> {
     match operator {
-        "||" => Some(0),                        // Or
-        "&&" => Some(1),                        // And
-        "==" | "!=" => Some(2),                 // Equality
-        "<" | ">" | "<=" | ">=" => Some(3),     // Comparison
-        "+" | "-" => Some(4),                   // Addition, Subtraction
-        "*" | "/" | "%" => Some(5),             // Multiplication, Division, and Modulo
-        "!" | "neg" => Some(6),                 // Unary Operators
-        "(" | ")" => Some(7),                   // Parentheses is highest level
-        _ => None,                              // No precedence for other operators
+        "||" => Some(0),                                // Or
+        "&&" => Some(1),                                // And
+        "==" | "!=" => Some(2),                         // Equality
+        "<" | ">" | "<=" | ">=" => Some(3),             // Comparison
+        "+" | "-" => Some(4),                           // Addition, Subtraction
+        "*" | "/" | "%" => Some(5),                     // Multiplication, Division, and Modulo
+        "!" | "neg" => Some(6),                         // Unary Operators
+        "(" | ")" | "[" | "]" | "{" | "}" => Some(7),   // Parentheses and Brackets for Functions and arrays
+        _ => None,                                      // No precedence for other operators
     }
 }
 
@@ -510,6 +659,25 @@ fn is_operator(token: &str) -> bool{
     || token == "||" || token == "&&" || token == "==" || token == "!=" || token == "!"
     || token == "<" || token == "<=" || token == ">" || token == ">=" || token == "(" 
     || token == ")" || token == "neg"
+}
+
+/// Match token for function names and return function name
+fn is_function(token: &str) -> Option<Functions>{
+    match token {
+        "at" => Some(Functions::At),
+        "foreach" => Some(Functions::Foreach),
+        "contains" => Some(Functions::Contains),
+        _ => None
+    }
+}
+
+/// Tokenizer for input strings into the ast
+fn tokenize(input: &str) -> Vec<String>{
+    let mut tokens: Vec<String> = vec![];
+    
+    todo!("Tokenizer for advanced tokenization");
+    tokens
+
 }
 
 /// This macro builds an AST from a string
@@ -743,7 +911,7 @@ fn test_more_complex_ast(){
 fn test_variables(){
 
     let map = get_variable_map_instance();
-    map.insert("x".to_owned(), "5".to_owned());
+    set_var!("x", "5");
 
     let (ast, root) = build_ast!("$x == 5");
 
@@ -757,16 +925,38 @@ fn test_variables(){
 #[test]
 fn test_str_var(){
     let map = get_variable_map_instance();
-    map.insert("x".to_owned(), "airport".to_owned());
+    set_var!("x", "airport");
 
     let (ast, root) = build_ast!("$x == milestone");
     
-    map.remove("x");
-    map.insert("x".to_owned(), "milestone".to_owned());
+    
+    set_var!("x", "milestone");
 
     let val = root.evaluate().unwrap();
     let (const_type, value) = val.get_constant_info();
     println!("{}: {}", const_type, value);
     assert_eq!(const_type, "Bool");
     assert_eq!(value, "true");
+}
+
+#[test]
+fn test_function_at(){
+    let map = get_variable_map_instance();
+    
+    set_var!("arr", "[0,1,2,3]");
+
+    let var = get_var!(value "arr").unwrap();
+    println!("{}", var);
+
+    assert_eq!(var, "[0,1,2,3]");
+
+
+    let (ast, root) = build_ast!("$arr.at(1) == 1");
+
+    let val = root.evaluate().unwrap();
+    let (const_type, value) = val.get_constant_info();
+    println!("{}: {}", const_type, value);
+    assert_eq!(const_type, "Bool");
+    assert_eq!(value, "true");
+
 }

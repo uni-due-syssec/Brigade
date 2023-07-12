@@ -16,4 +16,12 @@ pub enum ASTError {
     InvalidBinaryOperator,
     #[error("invalid constant for the operator {0}")]
     InvalidConstant(String),
+    #[error("invalid function called {0}")]
+    InvalidFunction(String),
+    #[error("can't parse array without delimiter")]
+    InvalidArray,
+    #[error("can't invoke function {0}")]
+    InvalidFunctionInvocation(String),
+    #[error("can't invoke function {0} because of missing parameters")]
+    InvalidFunctionParameter(String),
 }
