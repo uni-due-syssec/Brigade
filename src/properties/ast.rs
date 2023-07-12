@@ -1,6 +1,8 @@
 use std::collections::VecDeque;
 
-use tokio::task::LocalEnterGuard;
+use super::error::{self, ASTError};
+
+use super::environment::{get_variable, VariableMap, get_variable_map_instance};
 
 /// This file describes an Abstract Syntax Tree which should contain as leaves constants and the branches refer to logical or arithmetic operators.
 
@@ -34,7 +36,7 @@ impl LogicOperator {
         }
     }
 
-    pub fn from_str(string: &str) -> Result<LogicOperator, &'static str> {
+    pub fn from_str(string: &str) -> Result<LogicOperator, ASTError> {
         match string {
             ">" => Ok(LogicOperator::Greater),
             "<" => Ok(LogicOperator::Less),
@@ -45,7 +47,7 @@ impl LogicOperator {
             "&&" => Ok(LogicOperator::And),
             "||" => Ok(LogicOperator::Or),
             "!" => Ok(LogicOperator::Not),
-            _ => Err("Invalid Logic Operator"),
+            _ => Err(ASTError::InvalidLogicOperator(string.to_owned())),
         }
     }
 }
@@ -73,7 +75,7 @@ impl ArithmeticOperator{
         }
     }
 
-    pub fn from_str(string: &str) -> Result<ArithmeticOperator, &'static str> {
+    pub fn from_str(string: &str) -> Result<ArithmeticOperator, ASTError> {
         match string {
             "+" => Ok(ArithmeticOperator::Add),
             "-" => Ok(ArithmeticOperator::Subtract),
@@ -81,7 +83,7 @@ impl ArithmeticOperator{
             "/" => Ok(ArithmeticOperator::Divide),
             "%" => Ok(ArithmeticOperator::Modulo),
             "neg" => Ok(ArithmeticOperator::Negate),
-            _ => Err("Invalid Arithmetic Operator"),
+            _ => Err(ASTError::InvalidArithmeticOperator(string.to_owned())),
         }
     }
 }
@@ -92,6 +94,7 @@ pub enum ASTNode {
     ConstantBool(bool),
     ConstantNumber(f64),
     ConstantString(String),
+    Variable(String, &'static VariableMap), // String points to a variable on the VariableMap
     UnaryArithmetic(ArithmeticOperator, Box<ASTNode>),
     BinaryArithmetic(ArithmeticOperator, Box<ASTNode>, Box<ASTNode>),
     UnaryLogic(LogicOperator, Box<ASTNode>),
@@ -114,24 +117,46 @@ impl ASTConstant{
             ASTConstant::String(value) => ("String", value.clone()),
         }
     }
+
+    pub fn parse(value: String) -> Self {
+        match value.parse::<f64>() {
+            Ok(value) => ASTConstant::Number(value),
+            Err(_) => {
+                match value.parse::<bool>() {
+                    Ok(value) => ASTConstant::Bool(value),
+                    Err(_) => ASTConstant::String(value),
+                }
+            },
+        }
+    }
 }
 
 impl ASTNode {
-    pub fn evaluate(&self) -> Result<ASTConstant, &'static str> {
+    pub fn evaluate(&self) -> Result<ASTConstant, ASTError> {
         match self {
             ASTNode::ConstantBool(value) => Ok(ASTConstant::Bool(*value)),
             ASTNode::ConstantNumber(value) => Ok(ASTConstant::Number(*value)),
             ASTNode::ConstantString(value) => Ok(ASTConstant::String(value.clone())),
+            ASTNode::Variable(name, map_ref) => {
+
+                match get_variable(map_ref, name) {
+                    Some(value) => {
+                        println!("{:?}", value);
+                        Ok(ASTConstant::parse(value))
+                    },
+                    None => Err(ASTError::VariableNotFound { var: name.clone() }),
+                }
+            },
             ASTNode::UnaryArithmetic(operator, value) => { // Implementation of Unary Arithmetic Operations
                 let val = value.evaluate()?;
                 match operator { 
                     ArithmeticOperator::Negate => {
                         match val {
                             ASTConstant::Number(value) => Ok(ASTConstant::Number(-value)),
-                            _ => Err("Not Implemented"),
+                            _ => Err(ASTError::InvalidOperation(ArithmeticOperator::Negate.to_string().to_owned(), "bool".to_owned(), "string".to_owned())),
                         }
                     },
-                    _ => Err("Not Implemented"),
+                    _ => Err(ASTError::InvalidUnaryOperator),
                 }
             }
             ASTNode::BinaryArithmetic(operator, left, right) => { // Implementation of Binary Arithmetic Operations
@@ -147,13 +172,13 @@ impl ASTNode {
                                     ArithmeticOperator::Multiply => Ok(ASTConstant::Number(left * right)),
                                     ArithmeticOperator::Divide => Ok(ASTConstant::Number(left / right)),
                                     ArithmeticOperator::Modulo => Ok(ASTConstant::Number(left % right)),
-                                    _ => Err("Not Implemented"),
+                                    _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
                                 }
                             },
-                            _ => Err("Not Implemented"),
+                            _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
                         }
                     }
-                    _ => Err("Not Implemented"),
+                    _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
                 }
             },
             ASTNode::UnaryLogic(operator, value) => {
@@ -162,10 +187,10 @@ impl ASTNode {
                     ASTConstant::Bool(value) => {
                         match operator {
                         LogicOperator::Not => Ok(ASTConstant::Bool(!value)),
-                        _ => Err("Not Implemented"),
+                        _ => Err(ASTError::InvalidUnaryOperator),
                         }
                     },
-                    _ => Err("Not Implemented"),
+                    _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
                 }
             },
             ASTNode::BinaryLogic(operator, left, right) => {
@@ -180,10 +205,10 @@ impl ASTNode {
                                     LogicOperator::Or => Ok(ASTConstant::Bool(left || right)),
                                     LogicOperator::Equal => Ok(ASTConstant::Bool(left == right)),
                                     LogicOperator::NotEqual => Ok(ASTConstant::Bool(left != right)),
-                                    _ => Err("Not Implemented"),
+                                    _ => Err(ASTError::InvalidBinaryOperator),
                                 }
                             },
-                            _ => Err("Not Implemented"),
+                            _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
                         }
                     },
                     ASTConstant::Number(left) => {
@@ -196,10 +221,10 @@ impl ASTNode {
                                     LogicOperator::Less => Ok(ASTConstant::Bool(left < right)),
                                     LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(left >= right)),
                                     LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(left <= right)),
-                                    _ => Err("Not Implemented"),
+                                    _ => Err(ASTError::InvalidBinaryOperator),
                                 }
                             },
-                            _ => Err("Not Implemented"),
+                            _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
                         }
                     },
                     ASTConstant::String(left) => {
@@ -208,15 +233,14 @@ impl ASTNode {
                                 match operator {
                                     LogicOperator::Equal => Ok(ASTConstant::Bool(left == right)),
                                     LogicOperator::NotEqual => Ok(ASTConstant::Bool(left != right)),
-                                    _ => Err("Not Implemented"),
+                                    _ => Err(ASTError::InvalidBinaryOperator),
                                 }
                             },
-                            _ => Err("Not Implemented"),
+                            _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
                         }
                     }
                 }
             }
-            _ => Err("Not Implemented"),
         }
     }
 
@@ -225,6 +249,7 @@ impl ASTNode {
             ASTNode::ConstantBool(value) => value.to_string(),
             ASTNode::ConstantNumber(value) => value.to_string(),
             ASTNode::ConstantString(value) => value.clone(),
+            ASTNode::Variable(name, map_ref) => get_variable(map_ref, name).unwrap().to_string(),
             ASTNode::UnaryArithmetic(operator, value) => {
                 format!("\t{}\t\n{}", operator.to_string(), value.format())
             },
@@ -240,25 +265,6 @@ impl ASTNode {
         }
     }
 
-}
-
-macro_rules! build_ast {
-    ($str_pattern:expr) => {
-        let split_string = $str_pattern.split(" ").collect::<Vec<&str>>();
-        let mut ast_vec: Vec<ASTNode> = vec![];
-        for s in split_string.iter() {
-            println!("{}", s);
-            match s.parse::<i64>() {
-                Ok(value) => {
-                    ast_vec.push(ASTNode::ConstantNumber(value as f64));
-                },
-                Err(_) => {
-                    println!("{} is not a number", s);
-                    
-                }
-            }
-        }
-    };
 }
 
 /// Build the tree from a Vec of tokens and return the AST and the root node
@@ -387,25 +393,35 @@ fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode), &'
                     }
                 },
             }
-        }else{ // Parse Operator in respective type
-            match token.parse::<f64>() {
-                Ok(value) => {
-                    let node = ASTNode::ConstantNumber(value as f64);
-                    ast_vec.push(node.clone());
-                    stack.push(node);
-                },
-                Err(_) => {
-                    //println!("{} is not a number", token);
-                    match token.parse::<bool>(){
-                        Ok(value) => {
-                            let node = ASTNode::ConstantBool(value);
-                        },
-                        Err(_) => {
-                            //println!("{} is not a boolean", token);
-                            let node: ASTNode = ASTNode::ConstantString(token);
+        }else{ // Parse Operand in respective type
+            if token.starts_with("$"){ // If the token starts with $ a variable is used
+                let node = ASTNode::Variable(token[1..].to_string(), get_variable_map_instance());
+                ast_vec.push(node.clone());
+                stack.push(node);
+            }else{
+                match token.parse::<f64>() {
+                    Ok(value) => {
+                        let node = ASTNode::ConstantNumber(value);
+                        ast_vec.push(node.clone());
+                        stack.push(node);
+                    },
+                    Err(_) => {
+                        //println!("{} is not a number", token);
+                        match token.parse::<bool>(){
+                            Ok(value) => {
+                                let node = ASTNode::ConstantBool(value);
+                                ast_vec.push(node.clone());
+                                stack.push(node);
+                            },
+                            Err(_) => {
+                                //println!("{} is not a boolean", token);
+                                let node: ASTNode = ASTNode::ConstantString(token);
+                                ast_vec.push(node.clone());
+                                stack.push(node);
+                            }
                         }
-                    }
-                },
+                    },
+                }
             }
         }
     }
@@ -415,11 +431,14 @@ fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode), &'
     Ok((ast_vec, root))
 }
 
+/// The shunting yard algorithm by Dijkstra transforms the infix logic expression into postfix.
 fn shunting_yard_algorithm(tokens: Vec<String>) -> Result<VecDeque<String>, &'static str> {
     let mut stack: Vec<String> = vec![]; // Stack for operators
     let mut output_queue: VecDeque<String> = VecDeque::new();
 
     for token in tokens.iter() {
+        println!("Stack: {:?}", stack);
+        println!("Output Queue: {:?}", output_queue);
         if !is_operator(token){
             output_queue.push_back(token.clone());
         }else{
@@ -437,8 +456,19 @@ fn shunting_yard_algorithm(tokens: Vec<String>) -> Result<VecDeque<String>, &'st
                     stack.pop(); // Remove parenthesis
                 },
                 _ => {
-                    while !stack.is_empty() && is_operator(stack.last().unwrap()) && operator_precedence(token) >= operator_precedence(stack.last().unwrap()) {
-                        output_queue.push_back(stack.pop().unwrap());
+
+                    while !stack.is_empty() {
+                        if stack.last().unwrap() == "(" {
+                            break;
+                        }
+                        let op_precedence = operator_precedence(stack.last().unwrap());
+                        let self_precedence = operator_precedence(token);
+                        //println!("op_precedence: {:?}, self_precedence: {:?}", op_precedence, self_precedence);
+                        if op_precedence >= self_precedence {
+                            output_queue.push_back(stack.pop().unwrap());
+                        }else{
+                            break;
+                        }
                     }
                     stack.push(token.to_string());
                 }
@@ -453,6 +483,7 @@ fn shunting_yard_algorithm(tokens: Vec<String>) -> Result<VecDeque<String>, &'st
         }
         output_queue.push_back(val);
     }
+    println!("Output Queue: {:?}", output_queue);
 
     Ok(output_queue)
 }
@@ -481,6 +512,16 @@ fn is_operator(token: &str) -> bool{
     || token == ")" || token == "neg"
 }
 
+/// This macro builds an AST from a string
+/// The input is a string with the infix notation separated by spaces
+/// The return type is a tuple with the first entry being the full AST and the second entry being the root node
+macro_rules! build_ast {
+    ($str_pattern:expr) => {    
+        parse_postfix(shunting_yard_algorithm($str_pattern.split(" ").map(|s| s.to_string()).collect::<Vec<String>>()).unwrap()).unwrap()
+    };
+}
+
+
 #[test]
 fn test_ast(){
     // Example: 5 + 5 > 17 - 15
@@ -504,7 +545,11 @@ fn test_ast(){
 
 #[test]
 fn test_ast_macro(){
-    build_ast!("5 + 5 > 17 - 15");
+    let (ast, root) = build_ast!("5 == 5");
+
+    let val = root.evaluate().unwrap();
+    let(const_type, value) = val.get_constant_info();
+    println!("{}: {}", const_type, value);
 }
 
 #[test]
@@ -530,4 +575,198 @@ fn test_shunting_yard(){
     let (const_type, value) = val.get_constant_info();
 
     assert_eq!(value, "false");
+}
+
+#[test]
+fn test_all_operations(){
+    // Greater
+    let (ast, root) = build_ast!("5 > 4");
+
+    let val = root.evaluate().unwrap();
+    let(const_type, value) = val.get_constant_info();
+    println!("Greater: {}: {}", const_type, value);
+    assert_eq!(const_type, "Bool");
+    assert_eq!(value, "true");
+
+    // Less
+    let (ast, root) = build_ast!("3 < 4");
+
+    let val = root.evaluate().unwrap();
+    let(const_type, value) = val.get_constant_info();
+    println!("Less: {}: {}", const_type, value);
+    assert_eq!(const_type, "Bool");
+    assert_eq!(value, "true");
+
+    // GreaterOrEqual
+    let (ast, root) = build_ast!("5 >= 4");
+
+    let val = root.evaluate().unwrap();
+    let(const_type, value) = val.get_constant_info();
+    println!("GreaterOrEqual: {}: {}", const_type, value);
+    assert_eq!(const_type, "Bool");
+    assert_eq!(value, "true");
+
+    // LessOrEqual
+    let (ast, root) = build_ast!("4 <= 4");
+
+    let val = root.evaluate().unwrap();
+    let(const_type, value) = val.get_constant_info();
+    println!("LessOrEqual: {}: {}", const_type, value);
+    assert_eq!(const_type, "Bool");
+    assert_eq!(value, "true");
+
+    // Equal
+    let (ast, root) = build_ast!("5 == 5");
+
+    let val = root.evaluate().unwrap();
+    let(const_type, value) = val.get_constant_info();
+    println!("Equal: {}: {}", const_type, value);
+    assert_eq!(const_type, "Bool");
+    assert_eq!(value, "true");
+
+    // NotEqual
+    let (ast, root) = build_ast!("5 != 5");
+
+    let val = root.evaluate().unwrap();
+    let(const_type, value) = val.get_constant_info();
+    println!("NotEqual: {}: {}", const_type, value);
+    assert_eq!(const_type, "Bool");
+    assert_eq!(value, "false");
+
+    // Not
+    let (ast, root) = build_ast!("! true");
+    
+    let val = root.evaluate().unwrap();
+    let(const_type, value) = val.get_constant_info();
+    println!("Not: {}: {}", const_type, value);
+    assert_eq!(const_type, "Bool");
+    assert_eq!(value, "false");
+
+    // Add
+    let (ast, root) = build_ast!("5.5 + 5.0");
+
+    let val = root.evaluate().unwrap();
+    let(const_type, value) = val.get_constant_info();
+    println!("Add: {}: {}", const_type, value);
+    assert_eq!(const_type, "Number");
+    assert_eq!(value, "10.5");
+
+    // Subtract
+    let (ast, root) = build_ast!("5 - 5");
+
+    let val = root.evaluate().unwrap();
+    let(const_type, value) = val.get_constant_info();
+    println!("Subtract: {}: {}", const_type, value);
+    assert_eq!(const_type, "Number");
+    assert_eq!(value, "0");
+
+    // Multiply
+    let (ast, root) = build_ast!("5 * 5");
+
+    let val = root.evaluate().unwrap();
+    let(const_type, value) = val.get_constant_info();
+    println!("Multiply: {}: {}", const_type, value);
+    assert_eq!(const_type, "Number");
+    assert_eq!(value, "25");
+
+    // Divide
+    let (ast, root) = build_ast!("5 / 5");
+
+    let val = root.evaluate().unwrap();
+    let(const_type, value) = val.get_constant_info();
+    println!("Divide: {}: {}", const_type, value);
+    assert_eq!(const_type, "Number");
+    assert_eq!(value, "1");
+
+    // Modulo
+    let (ast, root) = build_ast!("5 % 5");
+
+    let val = root.evaluate().unwrap();
+    let(const_type, value) = val.get_constant_info();
+    println!("Modulo: {}: {}", const_type, value);
+    assert_eq!(const_type, "Number");
+    assert_eq!(value, "0");
+
+    // Negate
+    let (ast, root) = build_ast!("neg 5");
+
+    let val = root.evaluate().unwrap();
+    let(const_type, value) = val.get_constant_info();
+    println!("Negate: {}: {}", const_type, value);
+    assert_eq!(const_type, "Number");
+    assert_eq!(value, "-5");
+
+}
+
+#[test]
+fn test_complex_ast(){
+    // Test combination of Arithmetic and Logic Operators
+    let (ast, root) = build_ast!("5 + 5 > 7");
+
+
+    // 5 + 5 > 7
+    // 5 -> Output Queue [5] Stack []
+    // + -> Output Queue [5] Stack [+]
+    // 5 -> Output Queue [5, 5] Stack [+]
+    // > -> Output Queue [5, 5, +] Stack [>]
+    // 7 -> Output Queue [5, 5, +, 7] Stack [>]
+    // [5, 5, +, 7, >]
+
+    // 5 + 5 > 7
+    // 5 -> Output Queue [5] Stack []
+    // + -> Output Queue [5] Stack [+]
+    // 5 -> Output Queue [5, 5] Stack [+]
+    // > -> Output Queue [5, 5] Stack [+, >]
+    // 7 -> Output Queue [5, 5, 7] Stack [+, >]
+    // [5, 5, 7, >, +]
+
+
+    let val = root.evaluate().unwrap();
+    let(const_type, value) = val.get_constant_info();
+    println!("Add Greater: {}: {}", const_type, value);
+    assert_eq!(const_type, "Bool");
+    assert_eq!(value, "true");
+}
+
+#[test]
+fn test_more_complex_ast(){
+    let (ast, root) = build_ast!("( 17 * 3 ) % 10 == 1");
+
+    let val = root.evaluate().unwrap();
+    let(const_type, value) = val.get_constant_info();
+    println!("{}: {}", const_type, value);
+    assert_eq!(const_type, "Bool");
+    assert_eq!(value, "true");
+}
+
+#[test]
+fn test_variables(){
+
+    let map = get_variable_map_instance();
+    map.insert("x".to_owned(), "5".to_owned());
+
+    let (ast, root) = build_ast!("$x == 5");
+
+    let val = root.evaluate().unwrap();
+    let (const_type, value) = val.get_constant_info();
+    println!("{}: {}", const_type, value);
+    assert_eq!(const_type, "Bool");
+    assert_eq!(value, "true");
+}
+
+#[test]
+fn test_str_var(){
+    let map = get_variable_map_instance();
+    map.insert("x".to_owned(), "airport".to_owned());
+
+    let (ast, root) = build_ast!("$x == milestone");
+    
+    map.remove("x");
+    map.insert("x".to_owned(), "milestone".to_owned());
+
+    let val = root.evaluate().unwrap();
+    let (const_type, value) = val.get_constant_info();
+    println!("{}: {}", const_type, value);
+    assert_eq!(const_type, "Bool");
+    assert_eq!(value, "true");
 }
