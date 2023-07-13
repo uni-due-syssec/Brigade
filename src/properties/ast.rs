@@ -1,3 +1,4 @@
+use core::panic;
 use std::collections::VecDeque;
 use std::fmt::format;
 
@@ -7,6 +8,7 @@ use super::error::{self, ASTError};
 
 use super::environment::{get_variable, VariableMap, get_variable_map_instance, VarValues};
 use std::str::FromStr;
+use regex::Regex;
 
 /// This file describes an Abstract Syntax Tree which should contain as leaves constants and the branches refer to logical or arithmetic operators.
 /// The AST consists of Nodes see ASTNode struct
@@ -96,7 +98,6 @@ impl ArithmeticOperator{
 
 #[derive(Debug, Clone)]
 pub enum Functions{
-    Foreach, // foreach ASTNode the expression in the {} curly brackets must be evaluated
     Contains, // Returns true if ASTNode Array contains a ASTNode value
     At, // Returns the ASTNode value at index
 }
@@ -104,7 +105,6 @@ pub enum Functions{
 impl Functions{
     pub fn to_string(&self) -> &str {
         match self {
-            Functions::Foreach => "foreach",
             Functions::Contains => "contains",
             Functions::At => "at",
         }
@@ -112,8 +112,8 @@ impl Functions{
 
     pub fn from_str(string: &str) -> Result<Functions, ASTError> {
         match string {
-            "foreach" => Ok(Functions::Foreach),
             "contains" => Ok(Functions::Contains),
+            "at" => Ok(Functions::At),
             _ => Err(ASTError::InvalidFunction(string.to_owned())),
         }
     }
@@ -147,7 +147,7 @@ pub enum ASTNode {
     BinaryLogic(LogicOperator, Box<ASTNode>, Box<ASTNode>),
 
     // Functions
-    ASTFunction(Functions, Vec<Box<ASTNode>>),
+    Function(Functions, Vec<Box<ASTNode>>),
 }
 
 /// AST Value which contains a constant value
@@ -225,6 +225,17 @@ impl ASTNode {
                     ArithmeticOperator::Negate => {
                         match val {
                             ASTConstant::Number(value) => Ok(ASTConstant::Number(-value)),
+                            ASTConstant::Array(value) => {
+                                let mut arr = Vec::new();
+                                for v in value {
+                                    if v.get_constant_info().0 == "Number" {
+                                        arr.push(ASTConstant::Number(-v.get_value().parse::<f64>().unwrap()));
+                                    }else {
+                                        arr.push(v.clone());
+                                    }
+                                }
+                                Ok(ASTConstant::Array(arr))
+                            },
                             _ => Err(ASTError::InvalidOperation(ArithmeticOperator::Negate.to_string().to_owned(), "bool".to_owned(), "string".to_owned())),
                         }
                     },
@@ -247,6 +258,125 @@ impl ASTNode {
                                     _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
                                 }
                             },
+                            ASTConstant::Array(value) => {
+                                match operator {
+                                    ArithmeticOperator::Add => {
+                                        // Add value to all ASTConstants
+                                        let arr = value.iter().map(|value| {
+                                            let mut element = value.clone();
+                                            match &mut element {
+                                                ASTConstant::Number(num) => {
+                                                    *num += left;
+                                                }
+                                                ASTConstant::Array(inner_array) => {
+                                                    // *inner_array = inner_array.iter().map(|inner| {
+                                                        
+                                                    // })
+                                                    todo!("Add to Nested Array");
+                                                }
+                                                _ => unreachable!(),
+                                            }
+                                            element
+                                        }).collect();
+                                        Ok(ASTConstant::Array(arr))
+                                    },
+                                    ArithmeticOperator::Subtract => {
+                                        todo!("Implement Subtract")
+                                    },
+                                    ArithmeticOperator::Multiply => {
+                                        let arr = value.iter().map(|value| {
+                                            let mut element = value.clone();
+                                            match &mut element {
+                                                ASTConstant::Number(num) => {
+                                                    *num *= left;
+                                                }
+                                                _ => unreachable!(),
+                                            }
+                                            element
+                                        }).collect();
+                                        Ok(ASTConstant::Array(arr))
+                                    },
+                                    _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
+                                }
+                            }
+                            _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
+                        }
+                    }
+                    ASTConstant::Array(value) => {
+                        match right {
+                            ASTConstant::Number(right) => {
+                                match operator {
+                                    ArithmeticOperator::Add => {
+                                        let arr = value.iter().map(|value| {
+                                        let mut element = value.clone();
+                                        match &mut element {
+                                            ASTConstant::Number(num) => {
+                                                *num += right;
+                                            }
+                                            ASTConstant::Array(inner_array) => {
+                                                // *inner_array = inner_array.iter().map(|inner| {
+                                                    
+                                                // })
+                                                todo!("Add to Nested Array");
+                                            }
+                                            _ => unreachable!(),
+                                        }
+                                        element
+                                    }).collect();
+                                    Ok(ASTConstant::Array(arr))
+                                    },
+                                    ArithmeticOperator::Subtract => {
+                                        let arr = value.iter().map(|value| {
+                                            let mut element = value.clone();
+                                            match &mut element {
+                                                ASTConstant::Number(num) => {
+                                                    *num -= right;
+                                                }
+                                                ASTConstant::Array(inner_array) => {
+                                                    todo!("Add to Nested Array");
+                                                }
+                                                _ => unreachable!(),
+                                            }
+                                            element
+                                        }).collect();
+                                        Ok(ASTConstant::Array(arr))
+                                    }
+                                    ArithmeticOperator::Multiply => {
+                                        let arr = value.iter().map(|value| {
+                                            let mut element = value.clone();
+                                            match &mut element {
+                                                ASTConstant::Number(num) => {
+                                                    *num *= right;
+                                                }
+                                                ASTConstant::Array(inner_array) => {
+                                                    todo!("Add to Nested Array");
+                                                }
+                                                _ => unreachable!(),
+                                            }
+                                            element
+                                        }).collect();
+                                        Ok(ASTConstant::Array(arr))
+                                    },
+                                    ArithmeticOperator::Divide => {
+                                        let arr = value.iter().map(|value| {
+                                            let mut element = value.clone();
+                                            match &mut element {
+                                                ASTConstant::Number(num) => {
+                                                    *num = *num / right;
+                                                }
+                                                ASTConstant::Array(inner_array) => {
+                                                    todo!("Add to Nested Array");
+                                                }
+                                                _ => unreachable!(),
+                                            }
+                                            element
+                                        }).collect();
+                                        Ok(ASTConstant::Array(arr))
+                                    },
+                                    _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
+
+                                }
+                            },
                             _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
                         }
                     }
@@ -262,6 +392,24 @@ impl ASTNode {
                         _ => Err(ASTError::InvalidUnaryOperator),
                         }
                     },
+                    ASTConstant::Array(value) => {
+                        match operator {
+                            LogicOperator::Not => {
+                                let arr = value.iter().map(|value| {
+                                    let mut element = value.clone();
+                                    match &mut element {
+                                        ASTConstant::Bool(value) => {
+                                            *value = !value.to_string().parse::<bool>().unwrap();
+                                        },
+                                        _ => unreachable!(),
+                                    }
+                                    element
+                                }).collect();
+                                Ok(ASTConstant::Array(arr))
+                            }
+                            _ => Err(ASTError::InvalidUnaryOperator),
+                        }
+                    }
                     _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
                 }
             },
@@ -311,14 +459,74 @@ impl ASTNode {
                             _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
                         }
                     }
-                    ASTConstant::Array(_) => todo!("Arrays binary logic operations"),
+                    ASTConstant::Array(left) => {
+                        match right {
+                            ASTConstant::Number(right) => {
+                                match operator {
+                                    LogicOperator::Greater => Ok(ASTConstant::Bool(left.iter().all(|element| match element {
+                                        ASTConstant::Number(num) => *num > right,
+                                        _ => unreachable!(),
+                                    }))),
+                                    LogicOperator::Less => Ok(ASTConstant::Bool(left.iter().all(|element| match element {
+                                        ASTConstant::Number(num) => *num < right,
+                                        _ => unreachable!(),
+                                    }))),
+                                    LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(left.iter().all(|element| match element {
+                                        ASTConstant::Number(num) => *num >= right,
+                                        _ => unreachable!(),
+                                    }))),
+                                    LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(left.iter().all(|element| match element {
+                                        ASTConstant::Number(num) => *num <= right,
+                                        _ => unreachable!(),
+                                    }))),
+                                    LogicOperator::Equal => Ok(ASTConstant::Bool(left.iter().all(|element| match element {
+                                        ASTConstant::Number(num) => *num == right,
+                                        _ => unreachable!(),
+                                    }))),
+                                    LogicOperator::NotEqual => Ok(ASTConstant::Bool(left.iter().all(|element| match element {
+                                        ASTConstant::Number(num) => *num != right,
+                                        _ => unreachable!(),
+                                    }))),
+                                    _ => Err(ASTError::InvalidBinaryOperator),
+                                }
+                            }
+                            ASTConstant::Array(right) => {
+                                match operator {
+                                    LogicOperator::Equal => {
+                                        for i in 0..left.len() {
+                                            // println!("{:?}", left[i].get_value());
+                                            // println!("{:?}", right[i].get_value());
+                                            if left[i].get_value() != right[i].get_value() {
+                                                return Ok(ASTConstant::Bool(false));
+                                            }
+                                            // println!("is equal");
+                                        }
+                                        Ok(ASTConstant::Bool(true))
+                                    },
+                                    LogicOperator::NotEqual => {
+                                        for i in 0..left.len() {
+                                            // println!("{:?}", left[i].get_value());
+                                            // println!("{:?}", right[i].get_value());
+                                            if left[i].get_value() != right[i].get_value() {
+                                                return Ok(ASTConstant::Bool(true));
+                                            }
+                                            // println!("is equal");
+                                        }
+                                        Ok(ASTConstant::Bool(false))
+                                    },
+                                    LogicOperator::Greater | LogicOperator::Less | LogicOperator::GreaterOrEqual | LogicOperator::LessOrEqual => {
+                                        todo!("Implement logic operator for array");
+                                    }
+                                    _ => Err(ASTError::InvalidBinaryOperator),
+                                }
+                            }
+                            _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
+                        }
+                    },
                 }
             }
-            ASTNode::ASTFunction(function_name, args) => {
+            ASTNode::Function(function_name, args) => {
                 match function_name {
-                    Functions::Foreach => {
-                        todo!()
-                    },
                     Functions::Contains => todo!(),
                     Functions::At => {
                         let set = args[0].evaluate()?;
@@ -339,7 +547,7 @@ impl ASTNode {
                                     ASTConstant::String(value) => {
                                         Ok(ASTConstant::String(value.to_string()))
                                     }
-                                    ASTConstant::Array(_) => todo!("Implement multidimensional arrays"),
+                                    ASTConstant::Array(value) => todo!("array at array index"),
                                 }
                             },
                             _ => Err(ASTError::InvalidFunctionInvocation("at".to_owned())),
@@ -348,9 +556,12 @@ impl ASTNode {
                     },
                 }
             },
-            ASTNode::Array(_) => {
-                println!("Let Functions handle arrays");
-                Ok(ASTConstant::Number(1.0))
+            ASTNode::Array(val) => {
+                let mut arr = vec![];
+                for v in val {
+                    arr.push(v.evaluate()?);
+                }
+                Ok(ASTConstant::Array(arr))
             },
         }
     }
@@ -374,7 +585,7 @@ impl ASTNode {
                 format!("\t{}\n{}\t\t{}", operator.to_string(), left.format(), right.format())
             }
             ASTNode::Array(values) => format!("{}\n", values.iter().map(|value| value.format()).collect::<Vec<String>>().join("\n")),
-            ASTNode::ASTFunction(function_name, params) => format!("{}({})", function_name.to_string(), params.iter().map(|value| value.format()).collect::<Vec<String>>().join("\n")),
+            ASTNode::Function(function_name, params) => format!("{}({})", function_name.to_string(), params.iter().map(|value| value.format()).collect::<Vec<String>>().join("\n")),
         }
     }
 
@@ -520,7 +731,7 @@ fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode), AS
                                     return Err(ASTError::InvalidFunctionParameter("at".to_owned()))
                                 }
                                 // At expects a number as the index of the array.
-                                let node = ASTNode::ASTFunction(Functions::At, vec![
+                                let node = ASTNode::Function(Functions::At, vec![
                                     Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
                                     Box::new(ASTNode::ConstantNumber(arg[0].clone().parse::<f64>().unwrap()))   // Argument to the function
                                     ]);
@@ -530,9 +741,6 @@ fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode), AS
                             }else{
                                 return Err(ASTError::InvalidFunctionParameter("at".to_owned()))
                             }
-                        },
-                        "foreach" => {
-                            todo!("Implement foreach");
                         },
                         "contains" => {
                             todo!("Implement contains");
@@ -665,20 +873,104 @@ fn is_operator(token: &str) -> bool{
 fn is_function(token: &str) -> Option<Functions>{
     match token {
         "at" => Some(Functions::At),
-        "foreach" => Some(Functions::Foreach),
         "contains" => Some(Functions::Contains),
         _ => None
     }
 }
 
-/// Tokenizer for input strings into the ast
-fn tokenize(input: &str) -> Vec<String>{
-    let mut tokens: Vec<String> = vec![];
-    
-    todo!("Tokenizer for advanced tokenization");
-    tokens
-
+#[derive(Debug, Clone)]
+enum Token{
+    Number(f64),
+    Word(String),
+    Bool(bool),
+    Operator(String),
+    Params(Box<Token>),
+    Function(Functions),
+    Variable(String),
 }
+
+impl Token {
+    fn to_string(&self) -> String{
+        match self {
+            Token::Number(value) => format!("{}", value),
+            Token::Word(value) => format!("{}", value),
+            Token::Bool(value) => format!("{}", value),
+            Token::Operator(value) => format!("{}", value),
+            Token::Params(value) => format!("{:?}", value),
+            Token::Function(value) => format!("{:?}", value),
+            Token::Variable(value) => format!("{}", value),
+        }
+    }
+
+    fn from_str(token_type: &str, string: &str) -> Result<Self, &'static str>{
+        match token_type {
+            "NUMBER" => Ok(Token::Number(string.parse::<f64>().unwrap())),
+            "BOOL" => Ok(Token::Bool(string.parse::<bool>().unwrap())),
+            "OPERATOR" => Ok(Token::Operator(string.to_string())),
+            "WORD" => Ok(Token::Word(string.to_string())),
+            "FUNCTION" => Ok(Token::Function(is_function(string).unwrap())),
+            "VAR" => Ok(Token::Variable(string.to_string())),
+            "PARAMS" => Ok(Token::Params(Box::new(Token::from_str("PARAMS", string).unwrap()))),
+            _ => Err("Invalid Token"),
+        }
+    }
+}
+
+// /// Tokenizer for input strings into the ast
+// fn tokenize(input: &str) -> Vec<Token>{
+//     let mut tokens: Vec<Token> = vec![];
+    
+//     let token_patterns = [
+//         ("BOOL", "(true|false)"),
+//         ("OPERATOR", r#"\+|\-|\*|\/|\%|neg|\\<|\\>|\\<=|\\>=|\=\=|\!\=|\!"#),
+//         ("FUNCTION", r#"\.([^\d]+)\("#),
+//         ("VAR", r#"\$(\w*)[^.]"#),
+//         ("NUMBER", r#"\d+(\.\d+)?"#),
+//         ("WORD", "([a-zA-Z]*)"),
+//     ];
+
+//     let mut remaining_input = input;
+//     while !remaining_input.is_empty() {
+//         let mut matched_token = None;
+//         let mut matched_token_length = 0;
+
+//         for &(token_type, pattern) in &token_patterns {
+//             println!("Matching pattern {} with {}", token_type, remaining_input);
+//             let regex = Regex::new(&format!("{}", pattern)).unwrap();
+//             if let Some(matched) = regex.find(remaining_input) {
+//                 let token = matched.as_str().to_string();
+//                 println!("{}: {}", token_type, token);
+//                 let token_length = matched.end();
+//                 if token_length > matched_token_length {
+//                     matched_token = Some((token_type.to_string(), token));
+//                     matched_token_length = token_length;
+//                 }
+//             }
+
+//             if let Some((_, tok)) = matched_token {
+//                 println!("{}: {}", token_type, tok);
+//                 let t = match token_type {
+//                     "NUMBER" => Token::Number(tok.parse::<f64>().unwrap()),
+//                     "BOOL" => Token::Bool(tok.parse::<bool>().unwrap()),
+//                     "WORD" => Token::Word(tok.to_string()),
+//                     "OPERATOR" => Token::Operator(tok.to_string()),
+//                     "FUNCTION" => Token::Function(is_function(&tok).unwrap()),
+//                     "VAR" => Token::Variable(tok.to_string()),
+//                     "PARAMS" => Token::Params(Box::new(Token::from_str("PARAMS", &tok).unwrap())),
+//                     _ => panic!("Invalid Token"),
+//                 };
+//                 tokens.push(t);
+//                 remaining_input = &remaining_input[matched_token_length..];
+//             }
+//             else{
+//                 panic!("Unkown token at position {}", input.len() - remaining_input.len());
+//             }
+//         }
+//     }
+
+//     tokens
+
+// }
 
 /// This macro builds an AST from a string
 /// The input is a string with the infix notation separated by spaces
@@ -940,23 +1232,84 @@ fn test_str_var(){
 }
 
 #[test]
-fn test_function_at(){
-    let map = get_variable_map_instance();
-    
+fn test_function_at(){    
     set_var!("arr", "[0,1,2,3]");
 
-    let var = get_var!(value "arr").unwrap();
-    println!("{}", var);
-
-    assert_eq!(var, "[0,1,2,3]");
-
-
-    let (ast, root) = build_ast!("$arr.at(1) == 1");
+    let (_, root) = build_ast!("$arr.at(1) != 1");
 
     let val = root.evaluate().unwrap();
-    let (const_type, value) = val.get_constant_info();
-    println!("{}: {}", const_type, value);
-    assert_eq!(const_type, "Bool");
-    assert_eq!(value, "true");
+    let v = val.get_value();
+    println!("{}", v);
+    assert_eq!(v, "false");
 
+}
+
+#[test]
+fn test_arr() {
+    set_var!("arr", "[0,1,2,3]");
+    set_var!("arr2", "[0,1,2,3]");
+    set_var!("arr3", "[0,1,2,4]");
+
+    let (_, root) = build_ast!("$arr == $arr2");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    assert_eq!(ret, "true");
+
+    let (_, root) = build_ast!("$arr != $arr3");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    assert_eq!(ret, "true");
+
+}
+
+// #[test]
+// fn test_tokenizer(){
+//     let string = "15.0 + 5 > 17 || hallo == hallo && true";
+
+//     // String "15.0 + 5 > 17 || hallo == hallo && true || &arr.at(1) == 1"
+//     // Expected tokens: [15.0, +, 5, >, 17, ||, hallo, ==, hallo, &&, true, ||, &arr.at(1), ==, 1]
+
+//     let tokens = tokenize(string);
+
+//     println!("Tokens: {:?}", tokens);
+// }
+
+#[test]
+fn negate_array() {
+    set_var!("arr", "[0,1,2,3]");
+
+    let (_, root) = build_ast!("neg $arr");
+
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    assert_eq!(ret, "[-0,-1,-2,-3]");
+}
+
+#[test]
+fn test_arrays() {
+    set_var!("arr", "[0,1,2,3]");
+    set_var!("arr2", "[0,1,2,3]");
+    set_var!("arr3", "[0,1,2,4]");
+
+    let (_, root) = build_ast!("$arr + 1");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    assert_eq!(ret, "[1,2,3,4]");
+    assert_eq!(get_var!(value "arr").unwrap(), "[0,1,2,3]");
+
+    let (_, root) = build_ast!("$arr + 5 > 4");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    assert_eq!(ret, "true");
+
+    let (_ , root) = build_ast!("neg $arr.at(1) == 1");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    assert_eq!(ret, "false");
 }
