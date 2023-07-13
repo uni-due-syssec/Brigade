@@ -527,7 +527,16 @@ impl ASTNode {
             }
             ASTNode::Function(function_name, args) => {
                 match function_name {
-                    Functions::Contains => todo!(),
+                    Functions::Contains => {
+                        let set = args[0].evaluate()?;
+                        let value = args[1].evaluate()?;
+                        match set {
+                            ASTConstant::Array(arr)=> {
+                                Ok(ASTConstant::Bool(arr.iter().any(|element| element.get_value() == value.get_value())))
+                            },
+                            _ => Err(ASTError::InvalidFunctionInvocation("contains".to_owned())),
+                        }
+                    },
                     Functions::At => {
                         let set = args[0].evaluate()?;
                         let index = args[1].evaluate()?;
@@ -737,13 +746,24 @@ fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode), AS
                                     ]);
                                 ast_vec.push(node.clone());
                                 stack.push(node);
-                                println!("Pushed");
                             }else{
                                 return Err(ASTError::InvalidFunctionParameter("at".to_owned()))
                             }
                         },
                         "contains" => {
-                            todo!("Implement contains");
+                            if let Some(arg) = args{
+                                if arg.len() != 1{
+                                    return Err(ASTError::InvalidFunctionParameter("contains".to_owned()))
+                                }
+                                let node = ASTNode::Function(Functions::Contains, vec![
+                                    Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
+                                    Box::new(ASTNode::ConstantNumber(arg[0].clone().parse::<f64>().unwrap()))   // Argument to the function
+                                    ]);
+                                ast_vec.push(node.clone());
+                                stack.push(node);
+                            }else {
+                                return Err(ASTError::InvalidFunctionParameter("contains".to_owned()))
+                            }
                         },
                         _ => {
                             todo!("Implement more functions");
@@ -794,8 +814,8 @@ fn shunting_yard_algorithm(tokens: Vec<String>) -> Result<VecDeque<String>, &'st
     let mut output_queue: VecDeque<String> = VecDeque::new();
 
     for token in tokens.iter() {
-        println!("Stack: {:?}", stack);
-        println!("Output Queue: {:?}", output_queue);
+        // println!("Stack: {:?}", stack);
+        // println!("Output Queue: {:?}", output_queue);
         if !is_operator(token){
             output_queue.push_back(token.clone());
         }else{
@@ -840,7 +860,7 @@ fn shunting_yard_algorithm(tokens: Vec<String>) -> Result<VecDeque<String>, &'st
         }
         output_queue.push_back(val);
     }
-    println!("Output Queue: {:?}", output_queue);
+    //println!("Output Queue: {:?}", output_queue);
 
     Ok(output_queue)
 }
@@ -1025,7 +1045,6 @@ fn test_shunting_yard(){
     for o in output.iter(){
         print!("{}", o);
     }
-    println!("");
     
     let (ast, root) = parse_postfix(output).unwrap();
 
@@ -1034,7 +1053,7 @@ fn test_shunting_yard(){
     let val = root.evaluate().unwrap();
     let (const_type, value) = val.get_constant_info();
 
-    assert_eq!(value, "false");
+    assert_eq!(value, "true");
 }
 
 #[test]
@@ -1308,6 +1327,23 @@ fn test_arrays() {
     assert_eq!(ret, "true");
 
     let (_ , root) = build_ast!("neg $arr.at(1) == 1");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    assert_eq!(ret, "false");
+}
+
+#[test]
+fn test_contains() {
+    set_var!("arr", "[0,1,2,3]");
+
+    let (_, root) = build_ast!("$arr.contains(1)");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    assert_eq!(ret, "true");
+
+    let (_, root) = build_ast!("$arr.contains(60.0)");
     let val = root.evaluate().unwrap();
     let ret = val.get_value();
     println!("{}", ret);
