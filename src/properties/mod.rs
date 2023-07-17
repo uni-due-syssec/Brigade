@@ -3,11 +3,14 @@ use std::{path::{Path, PathBuf}, str::FromStr, fs};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use self::ast::ASTNode;
+
 mod description_parser;
+#[macro_use]
 mod ast;
 
 mod environment;
-
+mod definition;
 mod error;
 
 /// List of properties

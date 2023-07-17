@@ -601,7 +601,7 @@ impl ASTNode {
 }
 
 /// Build the tree from a Vec of tokens and return the AST and the root node
-fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode), ASTError>{
+pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode), ASTError>{
     let mut ast_vec: Vec<ASTNode> = vec![];
     let mut stack: Vec<ASTNode> = vec![];
 
@@ -809,7 +809,7 @@ fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode), AS
 }
 
 /// The shunting yard algorithm by Dijkstra transforms the infix logic expression into postfix.
-fn shunting_yard_algorithm(tokens: Vec<String>) -> Result<VecDeque<String>, &'static str> {
+pub fn shunting_yard_algorithm(tokens: Vec<String>) -> Result<VecDeque<String>, &'static str> {
     let mut stack: Vec<String> = vec![]; // Stack for operators
     let mut output_queue: VecDeque<String> = VecDeque::new();
 
