@@ -9,6 +9,8 @@ mod description_parser;
 #[macro_use]
 mod ast;
 
+mod custom_functions;
+
 mod environment;
 mod definition;
 mod error;
