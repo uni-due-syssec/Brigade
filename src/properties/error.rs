@@ -25,3 +25,11 @@ pub enum ASTError {
     #[error("can't invoke function {0} because of missing parameters")]
     InvalidFunctionParameter(String),
 }
+
+#[derive(Error, Debug)]
+pub enum PropertyError {
+    #[error("the property is invalid")]
+    InvalidProperty,  
+    #[error("the fieldname does not exist or an invalid response was returned")]
+    FieldNotFound, 
+}

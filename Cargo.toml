@@ -15,9 +15,12 @@ rustc-wrapper = "C:\\Users\\paswi\\.cargo\\bin\\sccache.exe"
 rustc-wrapper = "C:\\Users\\paswi\\.cargo\\bin\\sccache.exe"
 
 [dependencies]
-serde = {version = "1.0.164", features = ["derive"]}
+serde = {version = "1.0.164", features = ["derive"] }
 serde_json = "1.0.99"
 tokio = { version = "1.29.1", features = ["full"] }
 ws = "0.9.2"
 thiserror = "1.0.41"
 regex = "1.9.1"
+lazy_static = "1.4.0"
+futures = "0.3.25"
+reqwest = { version = "0.11", features = ["json", "blocking"] }

@@ -14,6 +14,8 @@ pub struct ChainConfig {
     name: String,
     /// RPC URL for Websocket
     rpc_url: String,
+    /// HTTP URL for RPCs
+    http_url: String,
     /// Contract Address on the Blockchain
     contract_address: String,
     /// Subscription Method Example: Ethereum "eth_subscribe" or Solana "logsSubscribe"
@@ -23,16 +25,20 @@ pub struct ChainConfig {
 }
 
 impl ChainConfig {
-    pub fn new(rpc_url: String, name: String, contract_address: String, subscription_method: String, filter: Value) -> Self {
+    pub fn new(rpc_url: String, http_url: String, name: String, contract_address: String, subscription_method: String, filter: Value) -> Self {
         Self {
             rpc_url,
+            http_url,
             name,
             contract_address,
             subscription_method,
             filter,
         }
     }
-
+    
+    pub fn get_http_url(&self) -> String {
+        self.http_url.clone()
+    }
     pub fn get_rpc_url(&self) -> String {
         self.rpc_url.clone()
     }

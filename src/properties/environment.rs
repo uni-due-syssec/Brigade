@@ -104,13 +104,13 @@ impl PartialOrd<f64> for VarValues {
     }
 }
 
-pub type VariableMap = HashMap<&'static str, VarValues>;
+pub type VariableMap = HashMap<String, VarValues>;
 
 pub fn get_variable(map: &VariableMap, key: &str) -> Option<ASTNode> {
     map.get(key).map(|v| v.to_ASTNode())
 }
 
-pub fn list_variables(map: &VariableMap) -> Vec<&'static str> {
+pub fn list_variables(map: &VariableMap) -> Vec<String> {
     map.keys().cloned().collect()
 }
 
@@ -131,7 +131,7 @@ pub fn get_variable_map_instance() -> &'static mut VariableMap {
 macro_rules! set_var{
     ($key:expr, $value:expr) => {
         let value: VarValues = VarValues::from_str($value).unwrap();
-        get_variable_map_instance().insert($key, value);
+        get_variable_map_instance().insert($key.to_owned(), value);
     };
 }
 
