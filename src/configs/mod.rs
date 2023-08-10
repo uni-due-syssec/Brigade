@@ -57,7 +57,7 @@ impl ChainConfig {
         self.subscription_method.clone()
     }
 
-    pub fn connect(&self, event_channel: Sender<String>) -> Result<()> {
+    pub fn connect(&self, event_channel: Sender<Properties>) -> Result<()> {
         if self.name.to_lowercase() == "ethereum"{
             self.connect_ethereum(event_channel)
         } else {
@@ -65,7 +65,7 @@ impl ChainConfig {
         }
     }
 
-    fn connect_generic(&self, event_channel: Sender<String>) -> Result<()> {
+    fn connect_generic(&self, event_channel: Sender<Properties>) -> Result<()> {
         ws::connect(self.rpc_url.clone(), |out| {
             // // Request subscription for Chain Events
             let request = json!({
@@ -88,7 +88,7 @@ impl ChainConfig {
         Ok(())
     }
 
-    fn connect_ethereum(&self, event_channel: Sender<String>) -> Result<()> {
+    fn connect_ethereum(&self, event_channel: Sender<Properties>) -> Result<()> {
         ws::connect(self.rpc_url.clone(), |out| {
             // // Request subscription for Chain Events
             let request = json!({

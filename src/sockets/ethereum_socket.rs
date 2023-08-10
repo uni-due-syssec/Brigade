@@ -12,12 +12,12 @@ pub struct EthereumSocketHandler{
     pub(crate) sender: ws::Sender,
     pub(crate) chain_name: String,
     pub(crate) properties: Vec<Properties>,
-    pub(crate) event_channel: Sender<String>,
+    pub(crate) event_channel: Sender<Properties>,
     request_url: String,
 }
 
 impl EthereumSocketHandler {
-    pub fn new(sender: ws::Sender, properties: Vec<Properties>, event_channel: Sender<String>, request_url: String) -> Self {
+    pub fn new(sender: ws::Sender, properties: Vec<Properties>, event_channel: Sender<Properties>, request_url: String) -> Self {
         Self {
             chain_name: "ethereum".to_string(),
             sender,
@@ -36,6 +36,7 @@ impl EthereumSocketHandler {
             self.properties[index].transaction_hash = Some(ethereum_msg.params.result.transaction_hash.clone());
             self.properties[index].block_number = Some(ethereum_msg.params.result.block_number.clone());
             self.properties[index].occured_event = Some(ethereum_msg.params.result.topics[0].clone());
+            self.properties[index].src_chain = Some(self.chain_name.clone());
             
             // println!("Ethereum Message: {}", ethereum_msg);
             
@@ -99,8 +100,8 @@ r#"{{
             let balance_before_block = serde_json::from_str::<EthereumBalanceMessage>(&body).unwrap();
             self.properties[index].payer_balance_before = Some(balance_before_block.result.clone());
 
-            println!("Properties full: {:?}", self.properties[index]);
-            self.event_channel.send(self.properties[index].occured_event.clone().unwrap()).unwrap();
+            // println!("Properties full: {:?}", self.properties[index]);
+            self.event_channel.send(self.properties[index].clone()).unwrap();
 
             // // Send the message to the websocket
             // self.sender.send(get_transaction_by_hash.to_string()).unwrap();
@@ -201,7 +202,6 @@ impl Handler for EthereumSocketHandler {
     fn on_open(&mut self, _shake: ws::Handshake) -> ws::Result<()> {
         println!("Open Websocket for Ethereum");
         let msg = format!("{} opened", self.chain_name);
-        self.event_channel.send(msg).unwrap();
         Ok(())
     }
 }

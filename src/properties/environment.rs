@@ -4,6 +4,8 @@ use std::mem::MaybeUninit;
 use std::str::FromStr;
 use std::sync::Once;
 
+use crate::utils;
+
 use super::ast::ASTNode;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -47,7 +49,6 @@ impl FromStr for VarValues {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-
         if s.starts_with("["){
             // Is Array
             let mut arr: Vec<VarValues> = Vec::new();

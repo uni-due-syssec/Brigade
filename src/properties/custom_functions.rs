@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use super::error;
 
-use crate::{ChainConfig, set_var, get_var};
+use crate::{ChainConfig, set_var, get_var, utils};
 use crate::properties::environment::*;
 use crate::properties::ast::*;
 
@@ -21,7 +21,7 @@ pub fn struct_from_json(path_to_json: &str) -> serde_json::Value {
 
 /// Check each field of the Value struct whether it should be replaced by a property
 /// The function returns a HashMap with local variables, which can be used in the pattern
-pub fn execute_custom_function(val: Value) -> Result<HashMap<String, Value>, error::PropertyError> {
+pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, error::PropertyError> {
     let mut results: HashMap<String, Value> = HashMap::new();
     let properties = val.get("properties").unwrap().as_object().unwrap();
     for (variable_name, value) in properties{
@@ -30,7 +30,8 @@ pub fn execute_custom_function(val: Value) -> Result<HashMap<String, Value>, err
         let func: Vec<&str> = p.collect();
         let chain_name = func[0];
         let function = func[1];
-        let fieldname = func[2];
+        let field_and_type: Vec<&str> = func[2].split(" ").collect();
+        let fieldname = field_and_type[0];        
 
         // Build Path for Chain Config
         let f = format!("config/{}_config.json", chain_name);
@@ -62,7 +63,7 @@ pub fn execute_custom_function(val: Value) -> Result<HashMap<String, Value>, err
         // Remove first and last element of parameters
         for p in parameters_json{
             let mut s = p.clone().trim().replace("'", "");
-            println!("{}", s);
+            // println!("{}", s);
             if s == "current_block" {
                 s = block_number.as_str().unwrap().to_string();    
             }else if s.contains("current_block"){
@@ -72,26 +73,46 @@ pub fn execute_custom_function(val: Value) -> Result<HashMap<String, Value>, err
                 let block = crate::utils::u64_to_hex_string(root.evaluate().unwrap().get_value().parse::<u64>().unwrap());
                 s = block.to_string();
             }
-            println!("->{}", s);
+            // println!("->{}", s);
             params.push(s);
         }
 
         let mut counter = 0;
         replace_variables(&mut function_json, params, &mut counter);
 
-        println!("{:?}", function_json);        
+        // println!("{:?}", function_json);        
 
         let res = client.post(&config.get_http_url()).json(&function_json).send().unwrap();
         let body = res.text().unwrap();
-        println!("{:?}", body);
+        // println!("{:?}", body);
         let result:Value = serde_json::from_str(&body.as_str()).unwrap();
-
+        println!("Result: {:?}", result);
         if let Some(object) = result.as_object(){
             let mut found = false;
             for (key, value) in object{
                 if key == fieldname {
                     //println!("Found {}", value);
-                    results.insert(variable_name.to_string(), value.clone());
+                    // Change the Value Type
+                    if field_and_type.len() == 3{
+                        let fieldtype = field_and_type[2];
+                        match fieldtype {
+                            "number" => {
+                                let mut temp = value.as_str().unwrap().clone();
+                                if temp.starts_with("0x"){
+                                    let v = serde_json::json!(utils::hex_string_to_u64(temp));    
+                                    results.insert(variable_name.to_string(), v);
+                                }else{
+                                    let v = serde_json::json!(value.clone().as_u64().unwrap());
+                                    results.insert(variable_name.to_string(), v);
+                                }
+                            },
+                            _ => {
+                                results.insert(variable_name.to_string(), value.clone());
+                            }
+                        }
+                    }else{
+                        results.insert(variable_name.to_string(), value.clone());
+                    }
                     found = true;
                     break;
                 }
@@ -135,6 +156,6 @@ pub fn replace_variables(json: &mut Value, params: Vec<String>, counter: &mut us
 #[test]
 fn test_execute_custom_function() {
     let val = struct_from_json("D:/Masterarbeit/brigade/properties/test_definition.json");
-    let results = execute_custom_function(val);
+    let results = execute_custom_function(&val);
     println!("{:?}", results.unwrap());
 }

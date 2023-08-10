@@ -2,13 +2,10 @@
     "event": "SendEthToSol(address,string,uint256)",
     "chain_name": "ethereum",
     "properties": { 
-        "balance_after": "ethereum.get_balance('0xa58a9d3a5e240b09da3bc0bfc011af3d20d31763', 'current_block').result",
-        "balance_before": "ethereum.get_balance('0xa58a9d3a5e240b09da3bc0bfc011af3d20d31763', 'current_block - 1').result"
+        "balance_after": "ethereum.get_balance('0xa58a9d3a5e240b09da3bc0bfc011af3d20d31763', 'current_block').result as number",
+        "balance_before": "ethereum.get_balance('0xa58a9d3a5e240b09da3bc0bfc011af3d20d31763', 'current_block - 1').result as number"
     },
     "pattern": [
-        "1 < 2",
-        "5 == 5",
-        "hallo != welt"
+        "$balance_after > $balance_before"
     ]
 }
-

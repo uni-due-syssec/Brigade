@@ -995,6 +995,7 @@ impl Token {
 /// This macro builds an AST from a string
 /// The input is a string with the infix notation separated by spaces
 /// The return type is a tuple with the first entry being the full AST and the second entry being the root node
+#[macro_export]
 macro_rules! build_ast {
     ($str_pattern:expr) => {    
         parse_postfix(shunting_yard_algorithm($str_pattern.split(" ").map(|s| s.to_string()).collect::<Vec<String>>()).unwrap()).unwrap()

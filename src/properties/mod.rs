@@ -7,12 +7,12 @@ use self::ast::ASTNode;
 
 mod description_parser;
 #[macro_use]
-mod ast;
+pub mod ast;
 
-mod custom_functions;
+pub mod custom_functions;
 
-mod environment;
-mod definition;
+pub(crate) mod environment;
+pub mod definition;
 mod error;
 
 /// List of properties
@@ -41,7 +41,8 @@ pub struct Properties{
     pub(crate) payer_address: Option<String>,
     pub(crate) payer_balance_before: Option<String>,
     pub(crate) payer_balance_after: Option<String>,
-    pub(crate) value: Option<String>
+    pub(crate) value: Option<String>,
+    pub(crate) src_chain: Option<String>,
 }
 
 impl Properties{
@@ -55,6 +56,7 @@ impl Properties{
             value: None,
             payer_balance_before: None,
             payer_balance_after: None,
+            src_chain: None
         }
     }
 
