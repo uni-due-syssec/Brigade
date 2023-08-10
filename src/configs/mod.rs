@@ -1,9 +1,11 @@
 
+use std::sync::mpsc::Sender;
+
 use serde::{Deserialize, Serialize, Deserializer};
 use serde_json::{json, Value};
 use ws::Result;
 
-use crate::{socket, properties::Properties};
+use crate::{sockets::{self, socket, ethereum_socket}, properties::Properties};
 
 mod ethereum_config;
 
@@ -55,7 +57,15 @@ impl ChainConfig {
         self.subscription_method.clone()
     }
 
-    pub fn connect(&self) -> Result<()> {
+    pub fn connect(&self, event_channel: Sender<String>) -> Result<()> {
+        if self.name.to_lowercase() == "ethereum"{
+            self.connect_ethereum(event_channel)
+        } else {
+            self.connect_generic(event_channel)
+        }
+    }
+
+    fn connect_generic(&self, event_channel: Sender<String>) -> Result<()> {
         ws::connect(self.rpc_url.clone(), |out| {
             // // Request subscription for Chain Events
             let request = json!({
@@ -68,13 +78,34 @@ impl ChainConfig {
             println!("{:?}", request.to_string());
 
             out.send(request.to_string()).unwrap();
-    
+            // Choose correct websocket implementation
             // Process incoming WebSocket messages handled by the WebSocketClientHandler
             socket::WebSocketClientHandler::new(
                 // State of the Client
                 self.name.clone(),out, vec![])
         }).unwrap();
+        
+        Ok(())
+    }
 
+    fn connect_ethereum(&self, event_channel: Sender<String>) -> Result<()> {
+        ws::connect(self.rpc_url.clone(), |out| {
+            // // Request subscription for Chain Events
+            let request = json!({
+                "jsonrpc": "2.0",
+                "method": self.get_subscription_method(),
+                "params": self.filter,
+                "id": 1
+            });
+            
+            println!("{:?}", request.to_string());
+
+            out.send(request.to_string()).unwrap();
+            // Choose correct websocket implementation
+            // Process incoming WebSocket messages handled by the WebSocketClientHandler
+            ethereum_socket::EthereumSocketHandler::new(out, vec![], event_channel.to_owned(), self.get_http_url().clone())
+        }).unwrap();
+        
         Ok(())
     }
 }

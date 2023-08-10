@@ -1,12 +1,14 @@
 use configs::ChainConfig;
+use std::sync::mpsc::{Sender, Receiver};
+use std::time::Duration;
 use std::{fs, path::Path};
 use serde_json::{json, Value};
-use std::sync::{Mutex, Arc};
+use std::sync::{Mutex, Arc, mpsc};
 
 use std::thread;
 
 mod configs;
-mod socket;
+mod sockets;
 mod message_formats;
 mod properties;
 mod utils;
@@ -17,10 +19,24 @@ fn main() {
     let mut thread_names: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let dir = Path::new("config");
 
+    let (tx, rx) :(Sender<String>, Receiver<String>) = mpsc::channel();
+
+    let event_thread = thread::spawn(move || {
+        loop {
+            println!("{}",rx.recv().unwrap());
+        }
+    });
+
+    thread_ids.push(event_thread);
+    thread_names.lock().unwrap().push("event".to_string());
+
     // Run through all files in directory dir and print their paths
     for entry in fs::read_dir(dir).unwrap() {
         let path = entry.unwrap().path();
         println!("{}", path.display());
+
+        // Channel for sending 
+        let sender = tx.clone();
 
         let thread_names_clone = Arc::clone(&thread_names);
         thread_ids.push(thread::spawn(move || {
@@ -30,8 +46,8 @@ fn main() {
             println!("{:?}", config);
             let mut t = thread_names_clone.lock().unwrap();
             t.push(config.get_name());
-
-            config.connect().unwrap();
+            
+            config.connect(sender).unwrap();
             println!("Connected to {}", config.get_name());
         }));
     }

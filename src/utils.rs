@@ -27,3 +27,19 @@ pub fn find_property_by_hash(hash: String, properties: &Vec<Properties>) -> Opti
     }
     None
 }
+
+/// Get the topic ids from a String
+/// The string consists of the Events name followed by all parameters' types
+/// E.g. "SendEthToSol(address,string,uint256)"
+pub fn get_ethereum_topic_ids(event_header: &str) -> String {
+    use sha3::Digest;
+
+    let event_header = "SendEthToSol(address,string,uint256)";
+    let topic_id = sha3::Keccak256::digest(event_header.as_bytes()).to_vec();
+
+    let hex_string: String = topic_id.iter().map(|&num| format!("{:x}",num)).collect::<Vec<String>>().join("");
+
+    let s = "0x".to_string() + &hex_string;
+    println!("{}", s);
+    s
+}

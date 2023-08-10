@@ -20,7 +20,7 @@ pub fn struct_from_json(path_to_json: &str) -> serde_json::Value {
 }
 
 /// Check each field of the Value struct whether it should be replaced by a property
-/// Then send the call with correct ID
+/// The function returns a HashMap with local variables, which can be used in the pattern
 pub fn execute_custom_function(val: Value) -> Result<HashMap<String, Value>, error::PropertyError> {
     let mut results: HashMap<String, Value> = HashMap::new();
     let properties = val.get("properties").unwrap().as_object().unwrap();

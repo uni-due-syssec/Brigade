@@ -11,3 +11,4 @@ Take a look at the RPC API provided by the Blockchain. There will be a descripti
 The name of the config file 'ethereum_config.json' indicates the chain name to be 'ethereum' which is used by the custom functions as prefix.
 Each chain needs a folder under functions with the chain name.
 Each chain needs a function called get_block_number.json which returns the current block number.
+In ethereum_socket.rs is a test which can be used to generate the topic id from the Event
