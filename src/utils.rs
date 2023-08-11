@@ -1,4 +1,5 @@
 use std::{sync::{Mutex, Arc, Once}, mem::MaybeUninit, thread::JoinHandle};
+use ethnum::{u256, uint, i256, int};
 
 use crate::properties::Properties;
 
@@ -17,7 +18,39 @@ pub fn hex_string_to_u128(hex_string: &str) -> u128 {
     if string_hex.starts_with("0x"){
         string_hex = &string_hex[2..];
     }
-    u128::from_str_radix(hex_string, 16).unwrap()
+    u128::from_str_radix(string_hex, 16).unwrap()
+}
+
+/// Convert a hex string to u256
+pub fn hex_string_to_u256(hex_string: &str) -> u256 {
+    let mut string_hex = hex_string;
+    if string_hex.starts_with("0x"){
+        string_hex = &string_hex[2..];
+    }
+    u256::from_str_radix(string_hex, 16).expect("Invalid hex string")
+}
+
+#[test]
+fn test_hex_string_to_u256(){
+    let hex = hex_string_to_u256("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
+    println!("{}", hex);
+    assert_eq!(hex, uint!("1393796574908163946345982392040522594123775"));
+}
+
+/// Convert a hex string to i256
+pub fn hex_string_to_i256(hex_string: &str) -> i256 {
+    let mut string_hex = hex_string;
+    if string_hex.starts_with("0x"){
+        string_hex = &string_hex[2..];
+    }
+    i256::from_str_radix(string_hex, 16).expect("Invalid hex string")
+}
+
+#[test]
+fn test_hex_string_to_i256(){
+    let hex = hex_string_to_i256("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
+    println!("{}", hex);
+    assert_eq!(hex, int!("1393796574908163946345982392040522594123775"));
 }
 
 /// Convert u64 into hex string 0xXXXXX

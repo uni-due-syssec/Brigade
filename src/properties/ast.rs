@@ -8,6 +8,7 @@ use super::error::{self, ASTError};
 
 use super::environment::{get_variable, VariableMap, get_variable_map_instance, VarValues};
 use std::str::FromStr;
+use ethnum::{u256, i256, AsU256};
 use regex::Regex;
 
 /// This file describes an Abstract Syntax Tree which should contain as leaves constants and the branches refer to logical or arithmetic operators.
@@ -130,7 +131,8 @@ pub enum ASTNode {
 
     // Constants
     ConstantBool(bool),
-    ConstantNumber(f64),
+    ConstantNumber(u256),
+    ConstantSignedNumber(i256),
     ConstantString(String),
     Array(Vec<Box<ASTNode>>),
     // arr.foreach() 
@@ -154,7 +156,8 @@ pub enum ASTNode {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ASTConstant {
     Bool(bool),
-    Number(f64),
+    Number(u256),
+    SignedNumber(i256),
     String(String),
     Array(Vec<ASTConstant>),
 }
@@ -164,6 +167,7 @@ impl ASTConstant{
         match self {
             ASTConstant::Bool(value) => ("Bool", value.to_string()),
             ASTConstant::Number(value) => ("Number", value.to_string()),
+            ASTConstant::SignedNumber(value) => ("SignedNumber", value.to_string()),
             ASTConstant::String(value) => ("String", value.clone()),
             ASTConstant::Array(value) => ("Array", format!("{:?}", value)),
         }
@@ -173,6 +177,7 @@ impl ASTConstant{
         match self {
             ASTConstant::Bool(value) => value.to_string(),
             ASTConstant::Number(value) => value.to_string(),
+            ASTConstant::SignedNumber(value) => value.to_string(),
             ASTConstant::String(value) => value.clone(),
             ASTConstant::Array(value) => {
                 let s = value.iter().map(|value| value.get_value()).collect::<Vec<String>>().join(",");
@@ -190,12 +195,17 @@ impl ASTConstant{
             }
             ASTConstant::Array(arr)
         }else{
-            match value.parse::<f64>() {
+            match value.parse::<u256>() {
                 Ok(value) => ASTConstant::Number(value),
                 Err(_) => {
                     match value.parse::<bool>() {
                         Ok(value) => ASTConstant::Bool(value),
-                        Err(_) => ASTConstant::String(value),
+                        Err(_) => {
+                            match  value.parse::<i256>() {
+                                Ok(value) => ASTConstant::SignedNumber(value),
+                                Err(_) => ASTConstant::String(value),
+                            }
+                        }
                     }
                 },
             }
@@ -208,6 +218,7 @@ impl ASTNode {
         match self {
             ASTNode::ConstantBool(value) => Ok(ASTConstant::Bool(*value)),
             ASTNode::ConstantNumber(value) => Ok(ASTConstant::Number(*value)),
+            ASTNode::ConstantSignedNumber(value) => Ok(ASTConstant::SignedNumber(*value)),
             ASTNode::ConstantString(value) => Ok(ASTConstant::String(value.clone())),
             ASTNode::Variable(name, map_ref) => {
 
@@ -224,12 +235,13 @@ impl ASTNode {
                 match operator { 
                     ArithmeticOperator::Negate => {
                         match val {
-                            ASTConstant::Number(value) => Ok(ASTConstant::Number(-value)),
+                            ASTConstant::Number(value) => Ok(ASTConstant::SignedNumber(-value.as_i256())),
+                            ASTConstant::SignedNumber(value) => Ok(ASTConstant::SignedNumber(-value)),
                             ASTConstant::Array(value) => {
                                 let mut arr = Vec::new();
                                 for v in value {
                                     if v.get_constant_info().0 == "Number" {
-                                        arr.push(ASTConstant::Number(-v.get_value().parse::<f64>().unwrap()));
+                                        arr.push(ASTConstant::SignedNumber(-v.get_value().parse::<i256>().unwrap()));
                                     }else {
                                         arr.push(v.clone());
                                     }
@@ -246,6 +258,62 @@ impl ASTNode {
                 let left = left.evaluate()?;
                 let right = right.evaluate()?;
                 match left {
+                    ASTConstant::SignedNumber(left) => {
+                        match right {
+                            ASTConstant::SignedNumber(right) => {
+                                match operator {
+                                    ArithmeticOperator::Add => Ok(ASTConstant::SignedNumber(left + right)),
+                                    ArithmeticOperator::Subtract => Ok(ASTConstant::SignedNumber(left - right)),
+                                    ArithmeticOperator::Multiply => Ok(ASTConstant::SignedNumber(left * right)),
+                                    ArithmeticOperator::Divide => Ok(ASTConstant::SignedNumber(left / right)),
+                                    ArithmeticOperator::Modulo => Ok(ASTConstant::SignedNumber(left % right)),
+                                    _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
+                                }
+                            },
+                            ASTConstant::Array(value) => {
+                                match operator {
+                                    ArithmeticOperator::Add => {
+                                        // Add value to all ASTConstants
+                                        let arr = value.iter().map(|value| {
+                                            let mut element = value.clone();
+                                            match &mut element {
+                                                ASTConstant::SignedNumber(num) => {
+                                                    *num += left;
+                                                }
+                                                ASTConstant::Array(inner_array) => {
+                                                    // *inner_array = inner_array.iter().map(|inner| {
+                                                        
+                                                    // })
+                                                    todo!("Add to Nested Array");
+                                                }
+                                                _ => unreachable!(),
+                                            }
+                                            element
+                                        }).collect();
+                                        Ok(ASTConstant::Array(arr))
+                                        },
+                                        ArithmeticOperator::Subtract => {
+                                            todo!("Implement Subtract")
+                                        },
+                                        ArithmeticOperator::Multiply => {
+                                            let arr = value.iter().map(|value| {
+                                                let mut element = value.clone();
+                                                match &mut element {
+                                                    ASTConstant::SignedNumber(num) => {
+                                                        *num *= left;
+                                                    }
+                                                    _ => unreachable!(),
+                                                }
+                                                element
+                                            }).collect();
+                                            Ok(ASTConstant::Array(arr))
+                                        },
+                                        _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
+                                    }
+                                }
+                            _ => Err(ASTError::InvalidBinaryOperator),
+                            }
+                        },
                     ASTConstant::Number(left) => {
                         match right {
                             ASTConstant::Number(right) => {
@@ -297,6 +365,28 @@ impl ASTNode {
                                         Ok(ASTConstant::Array(arr))
                                     },
                                     _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
+                                }
+                            }
+                            ASTConstant::SignedNumber(value) => {
+                                if value >= 0 {
+                                    let v = value.as_u256();
+                                    match operator {
+                                        ArithmeticOperator::Add => Ok(ASTConstant::Number(left + v)),
+                                        ArithmeticOperator::Subtract => Ok(ASTConstant::Number(left - v)),
+                                        ArithmeticOperator::Multiply => Ok(ASTConstant::Number(left * v)),
+                                        ArithmeticOperator::Divide => Ok(ASTConstant::Number(left / v)),
+                                        ArithmeticOperator::Modulo => Ok(ASTConstant::Number(left % v)),
+                                        _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
+                                    }
+                                }else{
+                                    match operator {
+                                        ArithmeticOperator::Add => Ok(ASTConstant::SignedNumber(left.as_i256() + value)),
+                                        ArithmeticOperator::Subtract => Ok(ASTConstant::SignedNumber(left.as_i256() - value)),
+                                        ArithmeticOperator::Multiply => Ok(ASTConstant::SignedNumber(left.as_i256() * value)),
+                                        ArithmeticOperator::Divide => Ok(ASTConstant::SignedNumber(left.as_i256() / value)),
+                                        ArithmeticOperator::Modulo => Ok(ASTConstant::SignedNumber(left.as_i256() % value)),
+                                        _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
+                                    }
                                 }
                             }
                             _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
@@ -417,6 +507,36 @@ impl ASTNode {
                 let left = left.evaluate()?;
                 let right = right.evaluate()?;
                 match left {
+                    ASTConstant::SignedNumber(left) => {
+                        match right {
+                            ASTConstant::Number(right) => {
+                                match operator {
+                                    LogicOperator::Equal => Ok(ASTConstant::Bool(left == right.as_i256())),
+                                    LogicOperator::NotEqual => Ok(ASTConstant::Bool(left != right.as_i256())),
+                                    LogicOperator::Greater => Ok(ASTConstant::Bool(left > right.as_i256())),
+                                    LogicOperator::Less => Ok(ASTConstant::Bool(left < right.as_i256())),
+                                    LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(left >= right.as_i256())),
+                                    LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(left <= right.as_i256())),
+                                    _ => Err(ASTError::InvalidBinaryOperator),
+                                }
+                            },
+                            ASTConstant::SignedNumber(right) => {
+                                match operator {
+                                    LogicOperator::Equal => Ok(ASTConstant::Bool(left == right)),
+                                    LogicOperator::NotEqual => Ok(ASTConstant::Bool(left != right)),
+                                    LogicOperator::Greater => Ok(ASTConstant::Bool(left > right)),
+                                    LogicOperator::Less => Ok(ASTConstant::Bool(left < right)),
+                                    LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(left >= right)),
+                                    LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(left <= right)),
+                                    _ => Err(ASTError::InvalidBinaryOperator),
+                                }
+                            },
+                            ASTConstant::Array(right) => {
+                                todo!("Implement Array Logic with signed numbers")
+                            },
+                            _ => Err(ASTError::InvalidBinaryOperator),
+                        }
+                    }
                     ASTConstant::Bool(left) => {
                         match right {
                             ASTConstant::Bool(right) => {
@@ -461,6 +581,35 @@ impl ASTNode {
                     }
                     ASTConstant::Array(left) => {
                         match right {
+                            ASTConstant::SignedNumber(right) => {
+                                match operator {
+                                    LogicOperator::Greater => Ok(ASTConstant::Bool(left.iter().all(|element| match element {
+                                        ASTConstant::SignedNumber(num) => *num > right,
+                                        _ => unreachable!(),
+                                    }))),
+                                    LogicOperator::Less => Ok(ASTConstant::Bool(left.iter().all(|element| match element {
+                                        ASTConstant::SignedNumber(num) => *num < right,
+                                        _ => unreachable!(),
+                                    }))),
+                                    LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(left.iter().all(|element| match element {
+                                        ASTConstant::SignedNumber(num) => *num >= right,
+                                        _ => unreachable!(),
+                                    }))),
+                                    LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(left.iter().all(|element| match element {
+                                        ASTConstant::SignedNumber(num) => *num <= right,
+                                        _ => unreachable!(),
+                                    }))),
+                                    LogicOperator::Equal => Ok(ASTConstant::Bool(left.iter().all(|element| match element {
+                                        ASTConstant::SignedNumber(num) => *num == right,
+                                        _ => unreachable!(),
+                                    }))),
+                                    LogicOperator::NotEqual => Ok(ASTConstant::Bool(left.iter().all(|element| match element {
+                                        ASTConstant::SignedNumber(num) => *num != right,
+                                        _ => unreachable!(),
+                                    }))),
+                                    _ => Err(ASTError::InvalidBinaryOperator),
+                                }
+                            }
                             ASTConstant::Number(right) => {
                                 match operator {
                                     LogicOperator::Greater => Ok(ASTConstant::Bool(left.iter().all(|element| match element {
@@ -553,6 +702,9 @@ impl ASTNode {
                                     ASTConstant::Number(value) => {
                                         Ok(ASTConstant::Number(*value))
                                     },
+                                    ASTConstant::SignedNumber(value) => {
+                                        Ok(ASTConstant::SignedNumber(*value))
+                                    },
                                     ASTConstant::String(value) => {
                                         Ok(ASTConstant::String(value.to_string()))
                                     }
@@ -579,6 +731,7 @@ impl ASTNode {
         match self {
             ASTNode::ConstantBool(value) => value.to_string(),
             ASTNode::ConstantNumber(value) => value.to_string(),
+            ASTNode::ConstantSignedNumber(value) => value.to_string(),
             ASTNode::ConstantString(value) => value.clone(),
             ASTNode::Variable(name, map_ref) => get_var!(value name.as_str()).unwrap(),
             ASTNode::UnaryArithmetic(operator, value) => {
@@ -739,10 +892,10 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
                                 if arg.len() != 1{
                                     return Err(ASTError::InvalidFunctionParameter("at".to_owned()))
                                 }
-                                // At expects a number as the index of the array.
+                                // At expects a positive number or zero as the index of the array.
                                 let node = ASTNode::Function(Functions::At, vec![
                                     Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
-                                    Box::new(ASTNode::ConstantNumber(arg[0].clone().parse::<f64>().unwrap()))   // Argument to the function
+                                    Box::new(ASTNode::ConstantNumber(arg[0].clone().parse::<u256>().unwrap()))   // Argument to the function
                                     ]);
                                 ast_vec.push(node.clone());
                                 stack.push(node);
@@ -757,7 +910,7 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
                                 }
                                 let node = ASTNode::Function(Functions::Contains, vec![
                                     Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
-                                    Box::new(ASTNode::ConstantNumber(arg[0].clone().parse::<f64>().unwrap()))   // Argument to the function
+                                    Box::new(ASTNode::ConstantNumber(arg[0].clone().parse::<u256>().unwrap()))   // Argument to the function
                                     ]);
                                 ast_vec.push(node.clone());
                                 stack.push(node);
@@ -776,7 +929,7 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
                     stack.push(node);
                 }
             }else{
-                match token.parse::<f64>() {
+                match token.parse::<u256>() {
                     Ok(value) => {
                         let node = ASTNode::ConstantNumber(value);
                         ast_vec.push(node.clone());
@@ -791,10 +944,21 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
                                 stack.push(node);
                             },
                             Err(_) => {
-                                //println!("{} is not a boolean", token);
-                                let node: ASTNode = ASTNode::ConstantString(token);
-                                ast_vec.push(node.clone());
-                                stack.push(node);
+
+                                match token.parse::<i256>(){
+                                    Ok(value) => {
+                                        let node = ASTNode::ConstantSignedNumber(value);
+                                        ast_vec.push(node.clone());
+                                        stack.push(node);
+                                    }
+                                    Err(_) => {
+                                        //println!("{} is not a boolean", token);
+                                        let node: ASTNode = ASTNode::ConstantString(token);
+                                        ast_vec.push(node.clone());
+                                        stack.push(node);
+                                    }
+                                }
+
                             }
                         }
                     },
@@ -1007,12 +1171,12 @@ macro_rules! build_ast {
 fn test_ast(){
     // Example: 5 + 5 > 17 - 15
 
-    let exp_a = ASTNode::ConstantNumber(5.0);
-    let exp_b = ASTNode::ConstantNumber(5.0);
+    let exp_a = ASTNode::ConstantNumber(5.as_u256());
+    let exp_b = ASTNode::ConstantNumber(5.as_u256());
     let exp_a_b = ASTNode::BinaryArithmetic(ArithmeticOperator::Add, Box::new(exp_a), Box::new(exp_b));
 
-    let exp_c = ASTNode::ConstantNumber(17.0);
-    let exp_d = ASTNode::ConstantNumber(15.0);
+    let exp_c = ASTNode::ConstantNumber(17.as_u256());
+    let exp_d = ASTNode::ConstantNumber(15.as_u256());
     let exp_c_d = ASTNode::BinaryArithmetic(ArithmeticOperator::Subtract, Box::new(exp_c), Box::new(exp_d));
 
     let exp_g = ASTNode::BinaryLogic(LogicOperator::Greater, Box::new(exp_a_b), Box::new(exp_c_d));
@@ -1123,13 +1287,13 @@ fn test_all_operations(){
     assert_eq!(value, "false");
 
     // Add
-    let (ast, root) = build_ast!("5.5 + 5.0");
+    let (ast, root) = build_ast!("5 + 5");
 
     let val = root.evaluate().unwrap();
     let(const_type, value) = val.get_constant_info();
     println!("Add: {}: {}", const_type, value);
     assert_eq!(const_type, "Number");
-    assert_eq!(value, "10.5");
+    assert_eq!(value, "10");
 
     // Subtract
     let (ast, root) = build_ast!("5 - 5");
@@ -1173,7 +1337,7 @@ fn test_all_operations(){
     let val = root.evaluate().unwrap();
     let(const_type, value) = val.get_constant_info();
     println!("Negate: {}: {}", const_type, value);
-    assert_eq!(const_type, "Number");
+    assert_eq!(const_type, "SignedNumber");
     assert_eq!(value, "-5");
 
 }
@@ -1305,7 +1469,7 @@ fn negate_array() {
     let val = root.evaluate().unwrap();
     let ret = val.get_value();
     println!("{}", ret);
-    assert_eq!(ret, "[-0,-1,-2,-3]");
+    assert_eq!(ret, "[0,-1,-2,-3]");
 }
 
 #[test]

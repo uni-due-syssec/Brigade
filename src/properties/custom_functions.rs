@@ -3,7 +3,9 @@ use std::path::Path;
 use std::fs;
 use std::str::FromStr;
 
-use serde_json::Value;
+use ethnum::{u256, i256, U256};
+use serde_json::{Value, Number};
+use hex::encode;
 
 use super::error;
 
@@ -73,6 +75,37 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
                 let block = crate::utils::u64_to_hex_string(root.evaluate().unwrap().get_value().parse::<u64>().unwrap());
                 s = block.to_string();
             }
+
+            if s.starts_with("$"){
+                let parts: Vec<&str> = s.split(" ").collect();
+                let var_name = parts[0];
+                if parts.len() > 1{
+                    let var_type = parts[2];
+                    let var = get_var!(value var_name).unwrap();
+                    match var_type {
+                        "hex" => {
+                            print!("Found {}", s);
+                            let num = U256::from_str_radix(var.as_str(), 10).unwrap();
+                            let arr: [u8; 32] = num.to_le_bytes();
+                            let hex_string = format!("0x{}", encode(&arr));
+                            s = hex_string;
+                            println!(" to {}", s);
+                        },
+                        _ => {
+                            print!("Found {}", s);
+                            let v = &s[1..];
+                            s = get_var!(value v).unwrap();
+                            println!(" to {}", s);
+                        }
+                    }
+                }else {
+                    print!("Found {}", s);
+                    let v = &s[1..];
+                    s = get_var!(value v).unwrap();
+                    println!(" to {}", s);
+                }
+                
+            }
             // println!("->{}", s);
             params.push(s);
         }
@@ -96,17 +129,48 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
                     if field_and_type.len() == 3{
                         let fieldtype = field_and_type[2];
                         match fieldtype {
-                            "number" => {
+                            "u256" => {
+                                //println!("u256");
                                 let mut temp = value.as_str().unwrap().clone();
                                 if temp.starts_with("0x"){
-                                    let v = serde_json::json!(utils::hex_string_to_u64(temp));    
+                                    let num = utils::hex_string_to_u256(temp).to_string();
+                                    let string_num = "u256:".to_owned() + &num;
+                                    let v = Value::String(string_num);
+                                    //println!("Starts {:?}", v);
+                                    results.insert(variable_name.to_string(), v);
+                                }else{
+                                    let v = serde_json::json!(value.clone().as_u64().unwrap());
+                                    //println!("{}", v);
+                                    results.insert(variable_name.to_string(), v);
+                                }
+                            },
+                            "i256" => {
+                                //println!("i256");
+                                let mut temp = value.as_str().unwrap().clone();
+                                if temp.starts_with("0x"){
+                                    let v = serde_json::json!(utils::hex_string_to_i256(temp));
                                     results.insert(variable_name.to_string(), v);
                                 }else{
                                     let v = serde_json::json!(value.clone().as_u64().unwrap());
                                     results.insert(variable_name.to_string(), v);
                                 }
                             },
+                            "bool" => {
+                                //println!("bool");
+                                let v = serde_json::json!(value.clone().as_bool().unwrap());
+                                results.insert(variable_name.to_string(), v);
+                            },
+                            "array" => {
+                                //println!("array");
+                                let v = serde_json::json!(value.clone().as_array().unwrap());
+                                results.insert(variable_name.to_string(), v);
+                            },
+                            "string" => {
+                                //println!("string");
+                                results.insert(variable_name.to_string(), value.clone());
+                            },
                             _ => {
+                                println!("Unknown Type");
                                 results.insert(variable_name.to_string(), value.clone());
                             }
                         }
@@ -156,6 +220,26 @@ pub fn replace_variables(json: &mut Value, params: Vec<String>, counter: &mut us
 #[test]
 fn test_execute_custom_function() {
     let val = struct_from_json("D:/Masterarbeit/brigade/properties/test_definition.json");
-    let results = execute_custom_function(&val);
-    println!("{:?}", results.unwrap());
+    let results = execute_custom_function(&val).unwrap();
+    println!("{:?}", results);
+
+    for (key, value) in results {
+        if value.is_string() {
+            if value.as_str().unwrap().starts_with("u256:"){
+                let s = &value.as_str().unwrap()[5..];
+                set_var!(key, u256::from_str(s).unwrap());
+            }
+            if value.as_str().unwrap().starts_with("i256:"){
+                let s = &value.as_str().unwrap()[5..];
+                set_var!(key, i256::from_str(s).unwrap());
+            }
+        }else{
+            set_var!(key, value);
+        }
+    }
+
+    let var: u256 = get_var!(u256 "balance_before").unwrap();
+
+    println!("{:?}", var);
+
 }

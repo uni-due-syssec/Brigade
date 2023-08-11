@@ -1,9 +1,11 @@
 use configs::ChainConfig;
+use ethnum::{uint, int, u256, i256};
+use owo_colors::OwoColorize;
 use properties::Properties;
 use properties::custom_functions::execute_custom_function;
 use std::sync::mpsc::{Sender, Receiver};
 use std::{fs, path::Path};
-use serde_json::{json, Value};
+use serde_json::{json, Value, Number};
 use std::sync::{Mutex, Arc, mpsc};
 
 use properties::ast::*;
@@ -17,7 +19,6 @@ mod sockets;
 mod message_formats;
 mod properties;
 mod utils;
-
 
 fn main() {
     let mut thread_ids = vec![];
@@ -67,20 +68,37 @@ fn main() {
 }
 
 fn event_loop(property: Properties) -> bool {
+
+    // Build generic Variables from property description
+    let prp = property.serialize();
+
+    for (key, value) in prp.as_object().unwrap() {
+        if value.is_string() && value.as_str().unwrap().starts_with("u256:"){
+            let s = &value.as_str().unwrap()[5..];
+            set_var!(key, u256::from_str(s).unwrap());
+        }
+        else if value.is_string() && value.as_str().unwrap().starts_with("i256:"){
+            let s = &value.as_str().unwrap()[5..];
+            set_var!(key, i256::from_str(s).unwrap());
+        }else{
+            set_var!(key, value.clone() );
+        }
+    }
+
     // Which Event?
     let event = property.occured_event.clone().unwrap();
     println!("Event: {}", event);
 
     let mut results: Vec<bool> = vec![];
 
-    println!("Dir_len {}", fs::read_dir("properties").unwrap().count());
+    //println!("Dir_len {}", fs::read_dir("properties").unwrap().count());
     // Find Property Files which are triggered by the Event and the chain
     for file in fs::read_dir("properties").unwrap() {
         
         let path = file.unwrap().path();
         let def_file: Value = serde_json::from_str(fs::read_to_string(&path).unwrap().as_str()).unwrap();
         let name = path.file_name().unwrap().to_str().unwrap();
-        println!("File: {}", name);
+        //println!("File: {}", name);
 
         // Ignore events not triggered by the event or on the wrong chain
         if property.src_chain.clone().unwrap().to_lowercase() == "ethereum" {
@@ -88,14 +106,14 @@ fn event_loop(property: Properties) -> bool {
             if ev != event {
                 let hashed_event = utils::get_ethereum_topic_ids(ev);
                 if hashed_event != event{
-                    println!("hashed_event: {}, event: {}", hashed_event, event);
+                    //println!("hashed_event: {}, event: {}", hashed_event, event);
                     continue;
                 }
             }
         } else {   
             if def_file.get("event").unwrap().as_str().unwrap() != event 
             || def_file.get("chain_name").unwrap().as_str().unwrap().to_lowercase() != property.src_chain.clone().unwrap().to_lowercase() {
-                println!("Continuing...");
+                //println!("Continuing...");
                 continue;
             }
         }
@@ -105,7 +123,16 @@ fn event_loop(property: Properties) -> bool {
         let vars = execute_custom_function(&def_file).unwrap();
 
         for (key, value) in vars {
-            set_var!(key, value.as_str().unwrap());
+            if value.is_string() && value.as_str().unwrap().starts_with("u256:"){
+                let s = &value.as_str().unwrap()[5..];
+                set_var!(key, u256::from_str(s).unwrap());
+            }
+            else if value.is_string() && value.as_str().unwrap().starts_with("i256:"){
+                let s = &value.as_str().unwrap()[5..];
+                set_var!(key, i256::from_str(s).unwrap());
+            }else{
+                set_var!(key, value);
+            }
         }
 
         // parse pattern into AST
@@ -122,20 +149,20 @@ fn event_loop(property: Properties) -> bool {
 
         // Save result
         if ret {
-            println!("Allow transaction: {} From: {}", property.transaction_hash.clone().unwrap(), name);
+            println!("{} transaction: {} From: {}", "Allow".green(), property.transaction_hash.clone().unwrap(), name.yellow());
             results.push(true);
         } else {
-            println!("Deny transaction: {} From: {}", property.transaction_hash.clone().unwrap(), name);
+            println!("{} transaction: {} From: {}", "Deny".red(), property.transaction_hash.clone().unwrap(), name.yellow());
             results.push(false);
         }
     }
 
     // Check all results and only allow when all are true
     if results.iter().all(|x| *x) {
-        println!("Allow transaction: {}", property.transaction_hash.clone().unwrap());
+        println!("{} transaction: {}", "Allow".green(), property.transaction_hash.clone().unwrap());
         true
     }else {
-        println!("Deny transaction: {}", property.transaction_hash.clone().unwrap());
+        println!("{} transaction: {}", "Deny".red(), property.transaction_hash.clone().unwrap());
         false
     }
 

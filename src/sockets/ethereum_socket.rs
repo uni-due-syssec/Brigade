@@ -34,7 +34,9 @@ impl EthereumSocketHandler {
             self.properties.push(Properties::new());
             let index = self.properties.len() - 1;
             self.properties[index].transaction_hash = Some(ethereum_msg.params.result.transaction_hash.clone());
-            self.properties[index].block_number = Some(ethereum_msg.params.result.block_number.clone());
+
+            let block_number = utils::hex_string_to_u256(ethereum_msg.params.result.block_number.clone().as_str());
+            self.properties[index].block_number = Some(block_number);
             self.properties[index].occured_event = Some(ethereum_msg.params.result.topics[0].clone());
             self.properties[index].src_chain = Some(self.chain_name.clone());
             
@@ -60,7 +62,8 @@ r#"{{
             let body = res.text().unwrap();
             let transaction_by_hash = serde_json::from_str::<EthereumTransactionByHash>(&body.as_str()).unwrap();
 
-            self.properties[index].value = Some(transaction_by_hash.result.value.clone());
+            let tx_value = utils::hex_string_to_u256(transaction_by_hash.result.value.clone().as_str());
+            self.properties[index].value = Some(tx_value);
             self.properties[index].payer_address = Some(transaction_by_hash.result.from.clone());
             // Get Current Block as decimal u64
             let current_block = utils::hex_string_to_u64(transaction_by_hash.result.block_number.as_str());
@@ -81,7 +84,8 @@ r#"{{
             let res = client.post(self.request_url.clone()).json(&request_body).send().unwrap();
             let body = res.text().unwrap();
             let balance_at_block = serde_json::from_str::<EthereumBalanceMessage>(&body).unwrap();
-            self.properties[index].payer_balance_after = Some(balance_at_block.result.clone());
+            let balance_after = utils::hex_string_to_u256(balance_at_block.result.clone().as_str());
+            self.properties[index].payer_balance_after = Some(balance_after);
 
             let get_balance_before_block = format!(
 r#"{{
@@ -98,7 +102,8 @@ r#"{{
             let res = client.post(self.request_url.clone()).json(&request_body).send().unwrap();
             let body = res.text().unwrap();
             let balance_before_block = serde_json::from_str::<EthereumBalanceMessage>(&body).unwrap();
-            self.properties[index].payer_balance_before = Some(balance_before_block.result.clone());
+            let balance_before = utils::hex_string_to_u256(balance_before_block.result.clone().as_str());
+            self.properties[index].payer_balance_before = Some(balance_before);
 
             // println!("Properties full: {:?}", self.properties[index]);
             self.event_channel.send(self.properties[index].clone()).unwrap();
