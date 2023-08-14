@@ -24,6 +24,13 @@ pub trait GetVar<T> {
     fn get_value(value: VarValues) -> Option<T>;
 }
 
+impl GetVar<&str> for &str {
+    fn get_value(value: VarValues) -> Option<&'static str> {
+        let s = format!("{:?}", value);
+        Some(Box::leak(s.into_boxed_str()))
+    }
+}
+
 impl GetVar<i32> for i32{
     fn get_value(value: VarValues) -> Option<i32> {
         if let VarValues::Number(v) = value {
@@ -247,7 +254,15 @@ impl VarValues {
 
     pub fn to_ASTNode(&self) -> ASTNode {
         match self {
-            VarValues::String(value) => ASTNode::ConstantString(value.clone()),
+            VarValues::String(value) => {
+                if value.starts_with("u256:"){
+                    ASTNode::ConstantNumber(value[5..].parse::<u256>().unwrap())
+                }else if value.starts_with("i256:"){
+                    ASTNode::ConstantSignedNumber(value[5..].parse::<i256>().unwrap())
+                }else{
+                    ASTNode::ConstantString(value.clone())
+                }
+            },
             VarValues::Number(value) => ASTNode::ConstantNumber(*value),
             VarValues::SignedNumber(value) => ASTNode::ConstantSignedNumber(*value),
             VarValues::Bool(value) => ASTNode::ConstantBool(*value),
@@ -286,6 +301,18 @@ impl FromStr for VarValues {
                 }
             }
         }
+    }
+}
+
+impl From<&str> for VarValues {
+    fn from(value: &str) -> Self {
+        if value.starts_with("u256:"){
+            return VarValues::Number(u256::from_str_radix(&value[5..], 10).unwrap());
+        }
+        if value.starts_with("i256:"){
+            return VarValues::SignedNumber(i256::from_str_radix(&value[5..], 10).unwrap());
+        }
+        VarValues::String(value.to_owned())
     }
 }
 
@@ -351,13 +378,13 @@ impl From<Vec<String>> for VarValues {
 
 impl From<String> for VarValues {
     fn from(s: String) -> Self {
+        if s.starts_with("u256:"){
+            return VarValues::Number(u256::from_str_radix(&s.clone()[5..], 10).unwrap());
+        }
+        if s.starts_with("i256:"){
+            return VarValues::SignedNumber(i256::from_str_radix(&s.clone()[5..], 10).unwrap());
+        }
         VarValues::String(s)
-    }
-}
-
-impl From<&str> for VarValues {
-    fn from(s: &str) -> Self {
-        VarValues::String(s.to_owned())
     }
 }
 
@@ -510,6 +537,14 @@ pub fn get_variable_map_instance() -> &'static mut VariableMap {
     }
 }
 
+// Set Variable in the VariableMap
+pub fn set_variable<T: GetVar<T>>(map: &mut VariableMap, key: &str, value: T) 
+where VarValues: From<T>
+{
+    let v = VarValues::from(value);
+    map.insert(key.to_owned(), v);
+}
+
 #[macro_export]
 macro_rules! set_var{
     ($key:expr, $value:expr) => {
@@ -641,4 +676,14 @@ fn test_typing(){
     set_var!("e", v.clone());
     let e: Vec<i32> = get_var!(Array "e").expect("Value not found");
     assert_eq!(e, v);
+}
+
+#[test]
+fn test_var_u256() {
+    let v = "u256:1000001";
+    set_var!("num", v);
+
+    set_variable(get_variable_map_instance(), "k", v.to_string());
+
+    println!("{:?}", get_variable_map_instance());
 }

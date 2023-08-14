@@ -1,0 +1,13 @@
+{
+    "event": "Eventname",
+    "chain_name": "chain_name",
+    "properties": {
+        "prefix:name1": "chain_name.function(param1, param2).return_field_name",
+        "prefix:name2": "function[0]"
+    },
+    "pattern": [
+        "pattern",
+        "pattern2"
+    ]
+}
+

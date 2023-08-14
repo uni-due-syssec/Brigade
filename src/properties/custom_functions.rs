@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::fs;
+use std::{fs, vec};
 use std::str::FromStr;
 
 use ethnum::{u256, i256, U256};
 use serde_json::{Value, Number};
 use hex::encode;
+use sha3::digest::typenum::array;
 
 use super::error;
 
@@ -56,6 +57,7 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
         let body = res.text().unwrap();
         let json_body: Value = serde_json::from_str(&body.as_str()).unwrap();
         let block_number = json_body.get("result").unwrap();
+        println!("Block Number: {}", block_number.as_str().unwrap());
         let var_name: String = format!("{}_block_number", chain_name);
         set_var!(var_name, block_number.as_str().unwrap());
 
@@ -76,33 +78,45 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
                 s = block.to_string();
             }
 
-            if s.starts_with("$"){
+            // Parse Variables
+            if s.starts_with("$"){ 
+                // println!("Variable: {}", s);
                 let parts: Vec<&str> = s.split(" ").collect();
-                let var_name = parts[0];
+                let var_name = &parts[0][1..];
+                // If len is bigger than one, the type is supplied
                 if parts.len() > 1{
+
+                    // println!("{:?}",&get_variable_map_instance());
+                    
                     let var_type = parts[2];
                     let var = get_var!(value var_name).unwrap();
                     match var_type {
                         "hex" => {
-                            print!("Found {}", s);
-                            let num = U256::from_str_radix(var.as_str(), 10).unwrap();
-                            let arr: [u8; 32] = num.to_le_bytes();
-                            let hex_string = format!("0x{}", encode(&arr));
-                            s = hex_string;
-                            println!(" to {}", s);
+                            // Convert to hex string if necessary
+                            if var.starts_with("0x") == false {
+                                // Get Var with correct data type
+                                let num = get_var!(u256 var_name).unwrap();
+                                let arr: [u8; 32] = num.to_be_bytes();
+                                let h = encode(&arr);
+                                let mut trimmed: String = String::new();
+
+                                for a in h.chars().skip_while(|c| *c == '0'){
+                                    trimmed.push(a);
+                                }
+                                let hex_string = format!("0x{}", trimmed);
+                                s = hex_string;
+                            }else{
+                                s = var;
+                            }
                         },
                         _ => {
-                            print!("Found {}", s);
                             let v = &s[1..];
                             s = get_var!(value v).unwrap();
-                            println!(" to {}", s);
                         }
                     }
                 }else {
-                    print!("Found {}", s);
                     let v = &s[1..];
                     s = get_var!(value v).unwrap();
-                    println!(" to {}", s);
                 }
                 
             }
@@ -119,7 +133,7 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
         let body = res.text().unwrap();
         // println!("{:?}", body);
         let result:Value = serde_json::from_str(&body.as_str()).unwrap();
-        println!("Result: {:?}", result);
+        //println!("Result: {:?}", result);
         if let Some(object) = result.as_object(){
             let mut found = false;
             for (key, value) in object{
@@ -137,10 +151,12 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
                                     let string_num = "u256:".to_owned() + &num;
                                     let v = Value::String(string_num);
                                     //println!("Starts {:?}", v);
+                                    set_var!(variable_name, v.clone());
                                     results.insert(variable_name.to_string(), v);
                                 }else{
                                     let v = serde_json::json!(value.clone().as_u64().unwrap());
                                     //println!("{}", v);
+                                    set_var!(variable_name, v.clone());
                                     results.insert(variable_name.to_string(), v);
                                 }
                             },
@@ -149,33 +165,40 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
                                 let mut temp = value.as_str().unwrap().clone();
                                 if temp.starts_with("0x"){
                                     let v = serde_json::json!(utils::hex_string_to_i256(temp));
+                                    set_var!(variable_name, v.clone());
                                     results.insert(variable_name.to_string(), v);
                                 }else{
                                     let v = serde_json::json!(value.clone().as_u64().unwrap());
+                                    set_var!(variable_name, v.clone());
                                     results.insert(variable_name.to_string(), v);
                                 }
                             },
                             "bool" => {
                                 //println!("bool");
                                 let v = serde_json::json!(value.clone().as_bool().unwrap());
+                                set_var!(variable_name, v.clone());
                                 results.insert(variable_name.to_string(), v);
                             },
                             "array" => {
                                 //println!("array");
                                 let v = serde_json::json!(value.clone().as_array().unwrap());
+                                set_var!(variable_name, v.clone());
                                 results.insert(variable_name.to_string(), v);
                             },
                             "string" => {
                                 //println!("string");
                                 results.insert(variable_name.to_string(), value.clone());
+                                set_var!(variable_name, value.clone());
                             },
                             _ => {
                                 println!("Unknown Type");
                                 results.insert(variable_name.to_string(), value.clone());
+                                set_var!(variable_name, value.as_str().unwrap());
                             }
                         }
                     }else{
                         results.insert(variable_name.to_string(), value.clone());
+                        set_var!(variable_name, value.as_str().unwrap());
                     }
                     found = true;
                     break;

@@ -1,0 +1,15 @@
+{
+  "name": "solana",
+  "rpc_url": "ws://127.0.0.1:8900",
+  "http_url": "http://127.0.0.1:8000",
+  "contract_address": "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS",
+  "subscription_method": "logsSubscribe",
+  "filter": [
+    {
+      "mentions": ["Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"]
+    },
+    {
+      "commitment": "confirmed"
+    }
+  ]
+}
