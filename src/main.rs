@@ -120,6 +120,8 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
         }
     }
 
+    println!("Variables: {:?}", list_variables(get_variable_map_instance()));
+
     // Which Event?
     let event = property.occured_event.clone().unwrap();
     println!("Event: {}", event);

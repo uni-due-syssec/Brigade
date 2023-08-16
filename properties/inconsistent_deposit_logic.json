@@ -1,0 +1,11 @@
+{
+    "event": "InconsistentDepositLogic(uint256,string,uint256)",
+    "chain_name": "ethereum",
+    "properties": { 
+        "balance_after": "ethereum.get_balance($payer_address, $ethereum_block_number.as(hex)).result as u256",
+        "balance_before": "ethereum.get_balance($payer_address, ($ethereum_block_number.as(u256) - 1).as(hex)).result as u256"
+    },
+    "pattern": [
+        "$balance_after <= $balance_before"
+    ]
+}

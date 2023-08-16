@@ -1,3 +1,4 @@
+use std::arch::x86_64::_MM_ROUND_DOWN;
 use std::collections::HashMap;
 use std::path::Path;
 use std::{fs, vec};
@@ -29,8 +30,9 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
     let properties = val.get("properties").unwrap().as_object().unwrap();
     for (variable_name, value) in properties{
         //println!("{:?} {:?}", key, value.as_str().unwrap());
-        let p = value.as_str().unwrap().split('.');
-        let func: Vec<&str> = p.collect();
+        let tokens = tokenize(value.as_str().unwrap().to_string());
+        //let p = value.as_str().unwrap().split('.');
+        let func: Vec<&str> = tokens.iter().map(|s| s.as_str()).collect();
         let chain_name = func[0];
         let function = func[1];
         let field_and_type: Vec<&str> = func[2].split(" ").collect();
@@ -43,9 +45,13 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
         let config: ChainConfig = serde_json::from_str(&fs::read_to_string(p).unwrap()).unwrap();
 
         // Process function
-        let f: Vec<&str> = function.split("(").collect();
-        let function_name = f[0];
-        let parameter_list = &f[1][..f[1].len()-1];
+        let temp = tokenize_function(function.to_string());
+        let mut f: Vec<&str> = temp.iter().map(|x| x.as_str()).collect();
+        let function_name = f[0].clone();
+        f.remove(0);
+        let parameter_list = f.clone();
+        println!("Function: {}", function_name);
+        println!("Parameters: {:?}", parameter_list);
 
         let function_path = format!("functions/{}/{}.json", chain_name, function_name);
         //println!("{:?}", function_path);
@@ -62,78 +68,89 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
         set_var!(var_name, block_number.as_str().unwrap());
 
         // Get Parameter and change Variable fields
-        let parameters_json: Vec<&str> = parameter_list.split(",").collect();
-        let mut params: Vec<String> = Vec::new();
-        // Remove first and last element of parameters
-        for p in parameters_json{
-            let mut s = p.clone().trim().replace("'", "");
-            // println!("{}", s);
-            if s == "current_block" {
-                s = block_number.as_str().unwrap().to_string();    
-            }else if s.contains("current_block"){
-                // Replace the current_block with the block number and make an u64 from it. Then, make it back to string again and build an AST from it
-                let exchanged_string = s.replace("current_block", crate::utils::hex_string_to_u64(block_number.as_str().unwrap()).to_string().as_str());
-                let (_, root) = build_ast!(exchanged_string);
-                let block = crate::utils::u64_to_hex_string(root.evaluate().unwrap().get_value().parse::<u64>().unwrap());
-                s = block.to_string();
-            }
+        let mut params = vec![];
+        for p in parameter_list.iter(){
+            let mut s = p.clone().trim_start().replace("'", "");
 
             // Parse Variables
-            if s.starts_with("$"){ 
-                // println!("Variable: {}", s);
-                let parts: Vec<&str> = s.split(" ").collect();
-                let var_name = &parts[0][1..];
-                // If len is bigger than one, the type is supplied
-                if parts.len() > 1{
-
-                    // println!("{:?}",&get_variable_map_instance());
-                    
-                    let var_type = parts[2];
-                    let var = get_var!(value var_name).unwrap();
-                    match var_type {
-                        "hex" => {
-                            // Convert to hex string if necessary
-                            if var.starts_with("0x") == false {
-                                // Get Var with correct data type
-                                let num = get_var!(u256 var_name).unwrap();
-                                let arr: [u8; 32] = num.to_be_bytes();
-                                let h = encode(&arr);
-                                let mut trimmed: String = String::new();
-
-                                for a in h.chars().skip_while(|c| *c == '0'){
-                                    trimmed.push(a);
-                                }
-                                let hex_string = format!("0x{}", trimmed);
-                                s = hex_string;
-                            }else{
-                                s = var;
-                            }
+            if s.contains("$"){
+                
+                // $var | $var - 1 | $var.as(hex)
+                if !s.contains(")."){
+                    let (_, root) = build_ast!(s);
+                    println!("Root: {:?}", root);
+                    match root.evaluate() {
+                        Ok(val) => {
+                            s = val.get_value().to_string();
+                            println!("Variable: {}", s);
                         },
-                        _ => {
-                            let v = &s[1..];
-                            s = get_var!(value v).unwrap();
+                        Err(e) => {
+                            println!("Variable error: {}", e);
                         }
                     }
-                }else {
-                    let v = &s[1..];
-                    s = get_var!(value v).unwrap();
+                }else{// ($var - 1 ). as(hex)
+                    let parts: Vec<&str> = s.split(").").collect();
+                    let stmt1 = &parts[0][1..];
+                    println!("Statement: {}", stmt1);
+                    let (_, root) = build_ast!(stmt1);
+                    match root.evaluate(){
+                        Ok(val) => {
+                            // Make Conversion
+                            let st = val.get_value().to_string() + "." + parts[1];
+                            println!("Statement: {}", st);
+                            let (_, stmt2) = build_ast!(st);
+                            match root.evaluate(){
+                                Ok(val) => {
+                                    s = val.get_value().to_string();
+                                    println!("Variable: {}", s);
+                                },
+                                Err(e) => {
+                                    println!("Variable error: {}", e);
+                                }
+                                
+                            }
+                        },
+                        Err(e) => {
+                            println!("Variable error: {}", e);
+                        }
+                    }
                 }
-                
             }
-            // println!("->{}", s);
             params.push(s);
         }
+
+        // let parameters_json: Vec<&str> = parameter_list.split(",").collect();
+        // let mut params: Vec<String> = Vec::new();
+        // // Remove first and last element of parameters
+        // for p in parameters_json{
+        //     let mut s = p.clone().trim().replace("'", "");
+        //     // println!("{}", s);
+        //     if s == "current_block" {
+        //         s = block_number.as_str().unwrap().to_string();    
+        //     }else if s.contains("current_block"){
+        //         // Replace the current_block with the block number and make an u64 from it. Then, make it back to string again and build an AST from it
+        //         let exchanged_string = s.replace("current_block", crate::utils::hex_string_to_u64(block_number.as_str().unwrap()).to_string().as_str());
+        //         let (_, root) = build_ast!(exchanged_string);
+        //         let block = crate::utils::u64_to_hex_string(root.evaluate().unwrap().get_value().parse::<u64>().unwrap());
+        //         s = block.to_string();
+        //     }
+
+                            
+        //     }
+        //     // println!("->{}", s);
+        //     params.push(s);
+        // }
 
         let mut counter = 0;
         replace_variables(&mut function_json, params, &mut counter);
 
-        // println!("{:?}", function_json);        
+        println!("{:?}", function_json);        
 
         let res = client.post(&config.get_http_url()).json(&function_json).send().unwrap();
         let body = res.text().unwrap();
         // println!("{:?}", body);
         let result:Value = serde_json::from_str(&body.as_str()).unwrap();
-        //println!("Result: {:?}", result);
+        // println!("Result: {:?}", result);
         if let Some(object) = result.as_object(){
             let mut found = false;
             for (key, value) in object{
@@ -212,6 +229,86 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
     Ok(results)
 }
 
+/// Tokenize Function header
+pub fn tokenize_function(s: String) -> Vec<String>{
+    let mut tokens: Vec<String> = Vec::new();
+
+    let mut current_token = String::new();
+    let mut is_name = true;
+    let mut in_parantheses = 0;
+    for token in s.chars(){
+        if token == '('{
+            in_parantheses += 1;
+        }
+        if token == ')'{
+            in_parantheses -= 1;
+        }
+
+        if token == '(' && is_name{
+            is_name = false;
+            tokens.push(current_token);
+            current_token = String::new();
+            continue;
+        }
+
+        // Check for params
+        if token == ',' && in_parantheses == 1{
+            tokens.push(current_token);
+            current_token = String::new();
+            continue;
+        }
+        current_token.push(token);
+    }
+    tokens.push(current_token[..current_token.len()-1].to_string());
+    println!("{:?}", tokens);
+    tokens
+
+}
+
+#[test]
+fn test_func_tokenizer(){
+    let property = "get_balance($payer_address, ($block_number.as(hex) - 1).as(hex))";
+    let tokens = tokenize_function(property.to_string());
+    println!("{:?}", tokens);
+}
+
+/// Tokenize the properties
+pub fn tokenize(s: String) -> Vec<String>{
+    let mut tokens: Vec<String> = Vec::new();
+
+    // Iterate through the string and split on . if not inside parentheses
+    let mut current_token = String::new();
+    let mut in_parantheses = 0;
+    for token in s.chars(){
+        if token == '.'{
+            // Check if inside parentheses 
+            if in_parantheses == 0{
+                tokens.push(current_token);
+                current_token = String::new();
+                continue;
+            }  
+        }
+        if token == '('{
+            in_parantheses += 1;
+        }
+
+        if token == ')'{
+            in_parantheses -= 1;
+        }
+
+        current_token.push(token);
+    }
+    tokens.push(current_token);
+    tokens
+}
+
+#[test]
+fn test_tokenizer(){
+    let property = "ethereum.get_balance($payer_address, ($block_number.as(u256) - 1).as(hex)).result as u256";
+    let tokens = tokenize(property.to_string());
+    println!("{:?}", tokens);
+}
+
 /// Replace the variables in the json file with the specified parameters of the property
 pub fn replace_variables(json: &mut Value, params: Vec<String>, counter: &mut usize) {
     match json {
@@ -242,9 +339,10 @@ pub fn replace_variables(json: &mut Value, params: Vec<String>, counter: &mut us
 
 #[test]
 fn test_execute_custom_function() {
-    let val = struct_from_json("D:/Masterarbeit/brigade/properties/test_definition.json");
+    let val = struct_from_json("D:/Masterarbeit/brigade/properties/test_definition2.json");
+    println!("{:?}", val);
     let results = execute_custom_function(&val).unwrap();
-    println!("{:?}", results);
+    println!("Result {:?}", results);
 
     for (key, value) in results {
         if value.is_string() {
@@ -261,7 +359,7 @@ fn test_execute_custom_function() {
         }
     }
 
-    let var: u256 = get_var!(u256 "balance_before").unwrap();
+    let var: u256 = get_var!(u256 "balance_after").unwrap();
 
     println!("{:?}", var);
 

@@ -30,6 +30,10 @@ pub fn hex_string_to_u256(hex_string: &str) -> u256 {
     u256::from_str_radix(string_hex, 16).expect("Invalid hex string")
 }
 
+pub fn u256_to_hex_string(u256: u256) -> String {
+    format!("0x{:X}", u256)
+}
+
 #[test]
 fn test_hex_string_to_u256(){
     let hex = hex_string_to_u256("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
@@ -75,8 +79,7 @@ pub fn find_property_by_hash(hash: String, properties: &Vec<Properties>) -> Opti
 /// E.g. "SendEthToSol(address,string,uint256)"
 pub fn get_ethereum_topic_ids(event_header: &str) -> String {
     use sha3::Digest;
-
-    let event_header = "SendEthToSol(address,string,uint256)";
+    
     let topic_id = sha3::Keccak256::digest(event_header.as_bytes()).to_vec();
 
     let hex_string: String = topic_id.iter().map(|&num| format!("{:02x}",num)).collect::<Vec<String>>().join("");
@@ -84,4 +87,11 @@ pub fn get_ethereum_topic_ids(event_header: &str) -> String {
     let s = "0x".to_string() + &hex_string;
     //println!("{}", s);
     s
+}
+
+#[test]
+fn test_topic_ids_ethereum(){
+    let event_header = "InconsistentDepositLogic(uint256,string,uint256)";
+    let topic_id = get_ethereum_topic_ids(event_header);
+    println!("{}", topic_id);
 }

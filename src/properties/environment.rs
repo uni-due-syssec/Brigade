@@ -312,6 +312,14 @@ impl From<&str> for VarValues {
         if value.starts_with("i256:"){
             return VarValues::SignedNumber(i256::from_str_radix(&value[5..], 10).unwrap());
         }
+        if value.starts_with("["){
+            let v = value[1..value.len()-1].split(",").collect::<Vec<&str>>();
+            let res = v.iter().map(|x| VarValues::from(*x)).collect::<Vec<VarValues>>();
+            return VarValues::Array(res);
+        }
+        if value.parse::<u256>().is_ok(){
+            return VarValues::Number(value.parse::<u256>().unwrap());
+        }
         VarValues::String(value.to_owned())
     }
 }
@@ -379,12 +387,17 @@ impl From<Vec<String>> for VarValues {
 impl From<String> for VarValues {
     fn from(s: String) -> Self {
         if s.starts_with("u256:"){
-            return VarValues::Number(u256::from_str_radix(&s.clone()[5..], 10).unwrap());
+            return VarValues::Number(u256::from_str_radix(&s[5..], 10).unwrap());
         }
         if s.starts_with("i256:"){
-            return VarValues::SignedNumber(i256::from_str_radix(&s.clone()[5..], 10).unwrap());
+            return VarValues::SignedNumber(i256::from_str_radix(&s[5..], 10).unwrap());
         }
-        VarValues::String(s)
+        if s.starts_with("["){
+            let v = s[1..s.len()-1].split(",").collect::<Vec<&str>>();
+            let res = v.iter().map(|x| VarValues::from(*x)).collect::<Vec<VarValues>>();
+            return VarValues::Array(res);
+        }
+        VarValues::String(s.to_owned())
     }
 }
 

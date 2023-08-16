@@ -12,3 +12,5 @@ The name of the config file 'ethereum_config.json' indicates the chain name to b
 Each chain needs a folder under functions with the chain name.
 Each chain needs a function called get_block_number.json which returns the current block number.
 In ethereum_socket.rs is a test which can be used to generate the topic id from the Event
+
+Following Types can be used in type conversions: "u256", "i256", "hex", "string"

@@ -2,19 +2,42 @@ use core::panic;
 use std::collections::VecDeque;
 use std::fmt::format;
 
-use crate::{get_var, set_var};
+use crate::{get_var, set_var, utils};
 
 use super::error::{self, ASTError};
 
-use super::environment::{get_variable, VariableMap, get_variable_map_instance, VarValues};
+use super::environment::{get_variable, VariableMap, get_variable_map_instance, VarValues, GetVar};
 use std::str::FromStr;
 use ethnum::{u256, i256, AsU256};
 use regex::Regex;
+use sha3::digest::typenum::U124;
 
 /// This file describes an Abstract Syntax Tree which should contain as leaves constants and the branches refer to logical or arithmetic operators.
 /// The AST consists of Nodes see ASTNode struct
 /// When evaluating the AST an ASTConstant is returned. See ASTConstant struct
 
+
+/// The conversion target types for the AST results
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConversionTarget {
+    String,
+    Number,
+    SignedNumber,
+    Hex,
+    Unknown,
+}
+
+impl From<&str> for ConversionTarget {
+    fn from(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "string" | "'string'" => ConversionTarget::String,
+            "u256" | "'u256'" => ConversionTarget::Number,
+            "i256" | "'i256'" => ConversionTarget::SignedNumber,
+            "hex" | "'hex'" => ConversionTarget::Hex,
+            _ => ConversionTarget::Unknown,
+        }
+    }
+}
 
 /// A Logical Operator which refers to Logical Statements returning either true or false
 #[derive(Debug, Clone, PartialEq)]
@@ -101,6 +124,7 @@ impl ArithmeticOperator{
 pub enum Functions{
     Contains, // Returns true if ASTNode Array contains a ASTNode value
     At, // Returns the ASTNode value at index
+    As, // Converts the value to correct representation
 }
 
 impl Functions{
@@ -108,6 +132,7 @@ impl Functions{
         match self {
             Functions::Contains => "contains",
             Functions::At => "at",
+            Functions::As => "as",
         }
     }
 
@@ -115,6 +140,7 @@ impl Functions{
         match string {
             "contains" => Ok(Functions::Contains),
             "at" => Ok(Functions::At),
+            "as" => Ok(Functions::As),
             _ => Err(ASTError::InvalidFunction(string.to_owned())),
         }
     }
@@ -163,6 +189,69 @@ pub enum ASTConstant {
 }
 
 impl ASTConstant{
+    pub fn convert(&self, target: ConversionTarget) -> Result<ASTConstant, ASTError> {
+        match target {
+            ConversionTarget::String => {
+                Ok(ASTConstant::String(self.get_value()))
+            },
+            ConversionTarget::Number => {
+                match self {
+                    ASTConstant::Number(v) => Ok(ASTConstant::Number(*v)),
+                    ASTConstant::SignedNumber(v) => Ok(ASTConstant::Number(v.as_u256())),
+                    ASTConstant::String(v) => {
+                        if v.starts_with("0x"){
+                            Ok(ASTConstant::Number(u256::from_str_hex(v).unwrap()))
+                        }else if v.starts_with("u256:") || v.starts_with("i256:"){
+                            Ok(ASTConstant::Number(u256::from_str(&v[5..]).unwrap()))
+                        }else{
+                            let num = v.parse::<u256>();
+                            match num{
+                                Ok(v) => Ok(ASTConstant::Number(v)),
+                                Err(e) =>Err(ASTError::InvalidConversion(v.to_string(), "number".to_string()))
+                            }
+                        }
+                    }
+                    _ => Err(ASTError::InvalidConversion(self.get_value().to_string(), "number".to_string()))
+                }
+            },
+            ConversionTarget::SignedNumber => {
+                match self {
+                    ASTConstant::Number(v) => Ok(ASTConstant::SignedNumber(v.as_i256())),
+                    ASTConstant::SignedNumber(v) => Ok(ASTConstant::SignedNumber(*v)),
+                    ASTConstant::String(v) => {
+                        if v.starts_with("0x"){
+                            Ok(ASTConstant::SignedNumber(i256::from_str_hex(v).unwrap()))
+                        }else if v.starts_with("u256:") || v.starts_with("i256:"){
+                            Ok(ASTConstant::SignedNumber(i256::from_str(&v[5..]).unwrap()))
+                        }else{
+                            let num = v.parse::<i256>();
+                            match num{
+                                Ok(v) => Ok(ASTConstant::SignedNumber(v)),
+                                Err(e) =>Err(ASTError::InvalidConversion(v.to_string(), "signed number".to_string()))
+                            }
+                        }
+                    }
+                    _ => Err(ASTError::InvalidConversion(self.get_value().to_string(), "signed number".to_string()))
+                }
+            },
+            ConversionTarget::Hex => {
+                match self {
+                    ASTConstant::Number(v) => Ok(ASTConstant::String(format!("0x{:x}", *v))),
+                    ASTConstant::SignedNumber(v) => Ok(ASTConstant::String(format!("0x{:x}", *v))),
+                    ASTConstant::String(v) => {
+                        if v.starts_with("0x"){
+                            Ok(ASTConstant::String(v.to_string()))
+                        }else{
+                            Err(ASTError::InvalidConversion(v.to_string(), "hex".to_string()))
+                        }
+                    }
+                    _ => Err(ASTError::InvalidConversion(self.get_value().to_string(), "hex".to_string()))
+                }
+            },
+            ConversionTarget::Unknown => todo!(),
+        }
+    }
+
     pub fn get_constant_info(&self) -> (&str, String) {
         match self {
             ASTConstant::Bool(value) => ("Bool", value.to_string()),
@@ -256,8 +345,24 @@ impl ASTNode {
             }
             ASTNode::BinaryArithmetic(operator, left, right) => { // Implementation of Binary Arithmetic Operations
                 let left = left.evaluate()?;
+                let left_clone = left.clone();
                 let right = right.evaluate()?;
                 match left {
+                    ASTConstant::String(l) => {
+                        match right {
+                            ASTConstant::Number(r) => {
+                                let val = left_clone.convert(ConversionTarget::Number).unwrap();
+                                let val_node = ASTNode::ConstantNumber(u256::from_str(val.get_value().as_str()).unwrap());
+                                ASTNode::BinaryArithmetic(operator.clone(), Box::new(val_node), Box::new(ASTNode::ConstantNumber(r))).evaluate()
+                            },
+                            ASTConstant::SignedNumber(r) => {
+                                let val = left_clone.convert(ConversionTarget::SignedNumber).unwrap();
+                                let val_node = ASTNode::ConstantSignedNumber(i256::from_str(val.get_value().as_str()).unwrap());
+                                ASTNode::BinaryArithmetic(operator.clone(), Box::new(val_node), Box::new(ASTNode::ConstantSignedNumber(r))).evaluate()
+                            },
+                            _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
+                        }
+                    }
                     ASTConstant::SignedNumber(left) => {
                         match right {
                             ASTConstant::SignedNumber(right) => {
@@ -310,7 +415,43 @@ impl ASTNode {
                                         },
                                         _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
                                     }
+                                },
+                            ASTConstant::String(value) => {
+                                // Try String Conversion
+                                if value.starts_with("0x"){
+                                    let v = utils::hex_string_to_u256(&value[2..]);
+                                    match operator {
+                                        ArithmeticOperator::Add => Ok(ASTConstant::SignedNumber(left + v.as_i256())),
+                                        ArithmeticOperator::Subtract => Ok(ASTConstant::SignedNumber(left - v.as_i256())),
+                                        ArithmeticOperator::Multiply => Ok(ASTConstant::SignedNumber(left * v.as_i256())),
+                                        ArithmeticOperator::Divide => Ok(ASTConstant::SignedNumber(left / v.as_i256())),
+                                        ArithmeticOperator::Modulo => Ok(ASTConstant::SignedNumber(left % v.as_i256())),
+                                        _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
+                                    }
+                                }else if value.starts_with("u256:"){
+                                    let v = u256::from_str(&value[5..]).unwrap();
+                                    match operator {
+                                        ArithmeticOperator::Add => Ok(ASTConstant::SignedNumber(left + v.as_i256())),
+                                        ArithmeticOperator::Subtract => Ok(ASTConstant::SignedNumber(left - v.as_i256())),
+                                        ArithmeticOperator::Multiply => Ok(ASTConstant::SignedNumber(left * v.as_i256())),
+                                        ArithmeticOperator::Divide => Ok(ASTConstant::SignedNumber(left / v.as_i256())),
+                                        ArithmeticOperator::Modulo => Ok(ASTConstant::SignedNumber(left % v.as_i256())),
+                                        _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
+                                    }
+                                }else if value.starts_with("i256:"){
+                                    let v = i256::from_str(&value[5..]).unwrap();
+                                    match operator {
+                                        ArithmeticOperator::Add => Ok(ASTConstant::SignedNumber(left + v)),
+                                        ArithmeticOperator::Subtract => Ok(ASTConstant::SignedNumber(left - v)),
+                                        ArithmeticOperator::Multiply => Ok(ASTConstant::SignedNumber(left * v)),
+                                        ArithmeticOperator::Divide => Ok(ASTConstant::SignedNumber(left / v)),
+                                        ArithmeticOperator::Modulo => Ok(ASTConstant::SignedNumber(left % v)),
+                                        _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
+                                    }
+                                }else{
+                                    Err(ASTError::InvalidConversion(value, "Number".to_string()))
                                 }
+                            }
                             _ => Err(ASTError::InvalidBinaryOperator),
                             }
                         },
@@ -387,6 +528,42 @@ impl ASTNode {
                                         ArithmeticOperator::Modulo => Ok(ASTConstant::SignedNumber(left.as_i256() % value)),
                                         _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
                                     }
+                                }
+                            }
+                            ASTConstant::String(value) => {
+                                // Try String Conversion
+                                if value.starts_with("0x"){
+                                    let v = utils::hex_string_to_u256(&value[2..]);
+                                    match operator {
+                                        ArithmeticOperator::Add => Ok(ASTConstant::Number(left + v)),
+                                        ArithmeticOperator::Subtract => Ok(ASTConstant::Number(left - v)),
+                                        ArithmeticOperator::Multiply => Ok(ASTConstant::Number(left * v)),
+                                        ArithmeticOperator::Divide => Ok(ASTConstant::Number(left / v)),
+                                        ArithmeticOperator::Modulo => Ok(ASTConstant::Number(left % v)),
+                                        _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
+                                    }
+                                }else if value.starts_with("u256:"){
+                                    let v = u256::from_str(&value[5..]).unwrap();
+                                    match operator {
+                                        ArithmeticOperator::Add => Ok(ASTConstant::Number(left + v)),
+                                        ArithmeticOperator::Subtract => Ok(ASTConstant::Number(left - v)),
+                                        ArithmeticOperator::Multiply => Ok(ASTConstant::Number(left * v)),
+                                        ArithmeticOperator::Divide => Ok(ASTConstant::Number(left / v)),
+                                        ArithmeticOperator::Modulo => Ok(ASTConstant::Number(left % v)),
+                                        _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
+                                    }
+                                }else if value.starts_with("i256:"){
+                                    let v = i256::from_str(&value[5..]).unwrap();
+                                    match operator {
+                                        ArithmeticOperator::Add => Ok(ASTConstant::SignedNumber(left.as_i256() + v)),
+                                        ArithmeticOperator::Subtract => Ok(ASTConstant::SignedNumber(left.as_i256() - v)),
+                                        ArithmeticOperator::Multiply => Ok(ASTConstant::SignedNumber(left.as_i256() * v)),
+                                        ArithmeticOperator::Divide => Ok(ASTConstant::SignedNumber(left.as_i256() / v)),
+                                        ArithmeticOperator::Modulo => Ok(ASTConstant::SignedNumber(left.as_i256() % v)),
+                                        _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
+                                    }
+                                }else{
+                                    Err(ASTError::InvalidConversion(value, "Number".to_string()))
                                 }
                             }
                             _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
@@ -534,6 +711,44 @@ impl ASTNode {
                             ASTConstant::Array(right) => {
                                 todo!("Implement Array Logic with signed numbers")
                             },
+                            ASTConstant::String(right) => {
+                                if right.starts_with("0x"){
+                                    let v = i256::from_str_hex(&right).unwrap();
+                                    match operator {
+                                        LogicOperator::Equal => Ok(ASTConstant::Bool(left == v)),
+                                        LogicOperator::NotEqual => Ok(ASTConstant::Bool(left != v)),
+                                        LogicOperator::Greater => Ok(ASTConstant::Bool(left > v)),
+                                        LogicOperator::Less => Ok(ASTConstant::Bool(left < v)),
+                                        LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(left >= v)),
+                                        LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(left <= v)),
+                                        _ => Err(ASTError::InvalidBinaryOperator),
+                                    }
+                                }else if right.starts_with("u256:"){
+                                    let v = u256::from_str(&right[5..]).unwrap().as_i256();
+                                    match operator {
+                                        LogicOperator::Equal => Ok(ASTConstant::Bool(left == v)),
+                                        LogicOperator::NotEqual => Ok(ASTConstant::Bool(left != v)),
+                                        LogicOperator::Greater => Ok(ASTConstant::Bool(left > v)),
+                                        LogicOperator::Less => Ok(ASTConstant::Bool(left < v)),
+                                        LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(left >= v)),
+                                        LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(left <= v)),
+                                        _ => Err(ASTError::InvalidBinaryOperator),
+                                    }
+                                }else if right.starts_with("i256:"){
+                                    let v = i256::from_str(&right[5..]).unwrap();
+                                    match operator {
+                                        LogicOperator::Equal => Ok(ASTConstant::Bool(left == v)),
+                                        LogicOperator::NotEqual => Ok(ASTConstant::Bool(left != v)),
+                                        LogicOperator::Greater => Ok(ASTConstant::Bool(left > v)),
+                                        LogicOperator::Less => Ok(ASTConstant::Bool(left < v)),
+                                        LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(left >= v)),
+                                        LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(left <= v)),
+                                        _ => Err(ASTError::InvalidBinaryOperator),
+                                    }
+                                }else {
+                                    Err(ASTError::InvalidConversion(right, "Number".to_string()))
+                                }
+                            }
                             _ => Err(ASTError::InvalidBinaryOperator),
                         }
                     }
@@ -564,6 +779,55 @@ impl ASTNode {
                                     _ => Err(ASTError::InvalidBinaryOperator),
                                 }
                             },
+                            ASTConstant::SignedNumber(right) => {
+                                match operator {
+                                    LogicOperator::Equal => Ok(ASTConstant::Bool(left.as_i256() == right)),
+                                    LogicOperator::NotEqual => Ok(ASTConstant::Bool(left.as_i256() != right)),
+                                    LogicOperator::Greater => Ok(ASTConstant::Bool(left.as_i256() > right)),
+                                    LogicOperator::Less => Ok(ASTConstant::Bool(left.as_i256() < right)),
+                                    LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(left.as_i256() >= right)),
+                                    LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(left.as_i256() <= right)),
+                                    _ => Err(ASTError::InvalidBinaryOperator),
+                                }
+                            },
+                            ASTConstant::String(right) => {
+                                if right.starts_with("0x"){
+                                    let v = u256::from_str_hex(&right).unwrap();
+                                    match operator {
+                                        LogicOperator::Equal => Ok(ASTConstant::Bool(left == v)),
+                                        LogicOperator::NotEqual => Ok(ASTConstant::Bool(left != v)),
+                                        LogicOperator::Greater => Ok(ASTConstant::Bool(left > v)),
+                                        LogicOperator::Less => Ok(ASTConstant::Bool(left < v)),
+                                        LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(left >= v)),
+                                        LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(left <= v)),
+                                        _ => Err(ASTError::InvalidBinaryOperator),
+                                    }
+                                }else if right.starts_with("u256:"){
+                                    let v = u256::from_str(&right[5..]).unwrap();
+                                    match operator {
+                                        LogicOperator::Equal => Ok(ASTConstant::Bool(left == v)),
+                                        LogicOperator::NotEqual => Ok(ASTConstant::Bool(left != v)),
+                                        LogicOperator::Greater => Ok(ASTConstant::Bool(left > v)),
+                                        LogicOperator::Less => Ok(ASTConstant::Bool(left < v)),
+                                        LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(left >= v)),
+                                        LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(left <= v)),
+                                        _ => Err(ASTError::InvalidBinaryOperator),
+                                    }
+                                }else if right.starts_with("i256:"){
+                                    let v = i256::from_str(&right[5..]).unwrap();
+                                    match operator {
+                                        LogicOperator::Equal => Ok(ASTConstant::Bool(left.as_i256() == v)),
+                                        LogicOperator::NotEqual => Ok(ASTConstant::Bool(left.as_i256() != v)),
+                                        LogicOperator::Greater => Ok(ASTConstant::Bool(left.as_i256() > v)),
+                                        LogicOperator::Less => Ok(ASTConstant::Bool(left.as_i256() < v)),
+                                        LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(left.as_i256() >= v)),
+                                        LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(left.as_i256() <= v)),
+                                        _ => Err(ASTError::InvalidBinaryOperator),
+                                    }
+                                }else{
+                                    Err(ASTError::InvalidConversion(right, "Number".to_string()))
+                                }
+                            }
                             _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
                         }
                     },
@@ -574,6 +838,82 @@ impl ASTNode {
                                     LogicOperator::Equal => Ok(ASTConstant::Bool(left == right)),
                                     LogicOperator::NotEqual => Ok(ASTConstant::Bool(left != right)),
                                     _ => Err(ASTError::InvalidBinaryOperator),
+                                }
+                            },
+                            ASTConstant::Number(right) => {
+                                if left.starts_with("0x"){
+                                    let l = u256::from_str_hex(&left).unwrap();
+                                    match operator{
+                                        LogicOperator::Equal => Ok(ASTConstant::Bool(l == right)),
+                                        LogicOperator::NotEqual => Ok(ASTConstant::Bool(l != right)),
+                                        LogicOperator::Greater => Ok(ASTConstant::Bool(l > right)),
+                                        LogicOperator::Less => Ok(ASTConstant::Bool(l < right)),
+                                        LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(l >= right)),
+                                        LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(l <= right)),
+                                        _ => Err(ASTError::InvalidBinaryOperator),
+                                    }
+                                }else if left.starts_with("u256:"){
+                                    let l = u256::from_str(&left[5..]).unwrap();
+                                    match operator{
+                                        LogicOperator::Equal => Ok(ASTConstant::Bool(l == right)),
+                                        LogicOperator::NotEqual => Ok(ASTConstant::Bool(l != right)),
+                                        LogicOperator::Greater => Ok(ASTConstant::Bool(l > right)),
+                                        LogicOperator::Less => Ok(ASTConstant::Bool(l < right)),
+                                        LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(l >= right)),
+                                        LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(l <= right)),
+                                        _ => Err(ASTError::InvalidBinaryOperator),
+                                    }
+                                }else if left.starts_with("i256:"){
+                                    let l = i256::from_str(&left[5..]).unwrap();
+                                    match operator{
+                                        LogicOperator::Equal => Ok(ASTConstant::Bool(l == right.as_i256())),
+                                        LogicOperator::NotEqual => Ok(ASTConstant::Bool(l != right.as_i256())),
+                                        LogicOperator::Greater => Ok(ASTConstant::Bool(l > right.as_i256())),
+                                        LogicOperator::Less => Ok(ASTConstant::Bool(l < right.as_i256())),
+                                        LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(l >= right.as_i256())),
+                                        LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(l <= right.as_i256())),
+                                        _ => Err(ASTError::InvalidBinaryOperator),
+                                    }
+                                }else{
+                                    Err(ASTError::InvalidConversion(left, "Number".to_string()))
+                                }
+                            },
+                            ASTConstant::SignedNumber(right) => {
+                                if left.starts_with("0x"){
+                                    let l = i256::from_str_hex(&left).unwrap();
+                                    match operator{
+                                        LogicOperator::Equal => Ok(ASTConstant::Bool(l == right)),
+                                        LogicOperator::NotEqual => Ok(ASTConstant::Bool(l != right)),
+                                        LogicOperator::Greater => Ok(ASTConstant::Bool(l > right)),
+                                        LogicOperator::Less => Ok(ASTConstant::Bool(l < right)),
+                                        LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(l >= right)),
+                                        LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(l <= right)),
+                                        _ => Err(ASTError::InvalidBinaryOperator),
+                                    }
+                                }else if left.starts_with("u256:"){
+                                    let l = i256::from_str(&left[5..]).unwrap();
+                                    match operator{
+                                        LogicOperator::Equal => Ok(ASTConstant::Bool(l == right)),
+                                        LogicOperator::NotEqual => Ok(ASTConstant::Bool(l != right)),
+                                        LogicOperator::Greater => Ok(ASTConstant::Bool(l > right)),
+                                        LogicOperator::Less => Ok(ASTConstant::Bool(l < right)),
+                                        LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(l >= right)),
+                                        LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(l <= right)),
+                                        _ => Err(ASTError::InvalidBinaryOperator),
+                                    }
+                                }else if left.starts_with("i256:"){
+                                    let l = i256::from_str(&left[5..]).unwrap();
+                                    match operator{
+                                        LogicOperator::Equal => Ok(ASTConstant::Bool(l == right)),
+                                        LogicOperator::NotEqual => Ok(ASTConstant::Bool(l != right)),
+                                        LogicOperator::Greater => Ok(ASTConstant::Bool(l > right)),
+                                        LogicOperator::Less => Ok(ASTConstant::Bool(l < right)),
+                                        LogicOperator::GreaterOrEqual => Ok(ASTConstant::Bool(l >= right)),
+                                        LogicOperator::LessOrEqual => Ok(ASTConstant::Bool(l <= right)),
+                                        _ => Err(ASTError::InvalidBinaryOperator),
+                                    }
+                                }else{
+                                    Err(ASTError::InvalidConversion(left, "Number".to_string()))
                                 }
                             },
                             _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
@@ -715,6 +1055,25 @@ impl ASTNode {
                         }
                         
                     },
+                    Functions::As => {
+                        let me = args[0].evaluate()?;
+                        let type_name = args[1].evaluate()?;
+                        
+                        println!("Type name: {}", type_name.get_value());
+                        println!("Me: {}", me.get_value());
+
+                        let conv = ConversionTarget::from(type_name.get_value().as_str());
+
+                        let converted = me.convert(conv);
+
+                        match converted {
+                            Ok(c) => Ok(c),
+                            Err(e) => {
+                                println!("Conversion failed: {}", e);
+                                Ok(me)
+                            }
+                        }
+                    }
                 }
             },
             ASTNode::Array(val) => {
@@ -752,6 +1111,22 @@ impl ASTNode {
     }
 
 }
+
+impl From<ASTConstant> for ASTNode {
+    fn from(value: ASTConstant) -> Self {
+        match value {
+            ASTConstant::Bool(value) => ASTNode::ConstantBool(value),
+            ASTConstant::Number(value) => ASTNode::ConstantNumber(value),
+            ASTConstant::SignedNumber(value) => ASTNode::ConstantSignedNumber(value),
+            ASTConstant::String(value) => ASTNode::ConstantString(value),
+            ASTConstant::Array(value) => {
+                let v = value.iter().map(|x| Box::new(ASTNode::from(x.clone()))).collect();
+                ASTNode::Array(v)
+            },
+        }
+    }
+}
+
 
 /// Build the tree from a Vec of tokens and return the AST and the root node
 pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode), ASTError>{
@@ -882,6 +1257,7 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
         }else{ // Parse Operand in respective type
             if token.starts_with("$"){ // If the token starts with $ a variable is used
 
+                // Variable Function calls
                 if token.contains("."){
                     let parts: Vec<&str> = token.split(".").collect();
                     let func: Vec<&str> = str::split(parts[1], "(").collect(); // example: at(1) -> at, 1)
@@ -918,51 +1294,73 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
                                 return Err(ASTError::InvalidFunctionParameter("contains".to_owned()))
                             }
                         },
+                        "as" => {
+                            if let Some(arg) = args{
+                                if arg.len() != 1{
+                                    return Err(ASTError::InvalidFunctionParameter("as".to_owned()))
+                                }
+                                let node = ASTNode::Function(Functions::As, vec![
+                                    Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
+                                    Box::new(ASTNode::ConstantString(arg[0].clone()))   // Argument to the function
+                                ]);
+                                ast_vec.push(node.clone());
+                                stack.push(node);
+                            }else{
+                                return Err(ASTError::InvalidFunctionParameter("as".to_owned()))
+                            }
+                        }
                         _ => {
                             todo!("Implement more functions");
                         }
                     }
                     
-                }else {  
+                }else {
+                    // Parse Variables  
                     let node = ASTNode::Variable(token[1..].to_string(), get_variable_map_instance());
                     ast_vec.push(node.clone());
                     stack.push(node);
                 }
             }else{
-                match token.parse::<u256>() {
-                    Ok(value) => {
-                        let node = ASTNode::ConstantNumber(value);
-                        ast_vec.push(node.clone());
-                        stack.push(node);
-                    },
-                    Err(_) => {
-                        //println!("{} is not a number", token);
-                        match token.parse::<bool>(){
-                            Ok(value) => {
-                                let node = ASTNode::ConstantBool(value);
+                // Function calls on all AST Nodes
+                if token.contains(".") {
+                    let parts: Vec<&str> = token.split(".").collect();
+                    let func: Vec<&str> = str::split(parts[1], "(").collect(); // example: at(1) -> at, 1)
+                    let args = Functions::get_args(func[1]);
+                    match func[0] {
+                        "as" => {
+                            if let Some(arg) = args{
+                                if arg.len() != 1{
+                                    return Err(ASTError::InvalidFunctionParameter("as".to_owned()))
+                                }
+                                // At expects a positive number or zero as the index of the array.
+                                let node = ASTNode::Function(Functions::As, vec![
+                                    Box::new(parse_token(parts[0].to_string()).expect("Could not parse token")), // Pointer to variable
+                                    Box::new(ASTNode::ConstantString(arg[0].clone()))   // Argument to the function
+                                    ]);
                                 ast_vec.push(node.clone());
                                 stack.push(node);
-                            },
-                            Err(_) => {
-
-                                match token.parse::<i256>(){
-                                    Ok(value) => {
-                                        let node = ASTNode::ConstantSignedNumber(value);
-                                        ast_vec.push(node.clone());
-                                        stack.push(node);
-                                    }
-                                    Err(_) => {
-                                        //println!("{} is not a boolean", token);
-                                        let node: ASTNode = ASTNode::ConstantString(token);
-                                        ast_vec.push(node.clone());
-                                        stack.push(node);
-                                    }
-                                }
-
+                            }else{
+                                return Err(ASTError::InvalidFunctionParameter("as".to_owned()))
                             }
+                        },
+                        _ => {
+                            todo!("Implement more functions");
                         }
-                    },
+                    }
                 }
+                else{
+                    // Parse normal token
+                    let node = match parse_token(token){
+                        Ok(node) => {
+                            ast_vec.push(node.clone());
+                            stack.push(node);
+                        },
+                        Err(e) => {
+                            panic!("Error at token parsing {}", e);
+                        }
+                    };    
+                }
+                
             }
         }
     }
@@ -970,6 +1368,35 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
     let root = stack.pop().unwrap();
 
     Ok((ast_vec, root))
+}
+
+pub fn parse_token(token: String) -> Result<ASTNode, &'static str>{
+    match token.parse::<u256>() {
+        Ok(value) => {
+            Ok(ASTNode::ConstantNumber(value))
+        },
+        Err(_) => {
+            //println!("{} is not a number", token);
+            match token.parse::<bool>(){
+                Ok(value) => {
+                    Ok(ASTNode::ConstantBool(value))
+                },
+                Err(_) => {
+
+                    match token.parse::<i256>(){
+                        Ok(value) => {
+                            Ok(ASTNode::ConstantSignedNumber(value))
+                        }
+                        Err(_) => {
+                            //println!("{} is not a boolean", token);
+                            Ok(ASTNode::ConstantString(token))
+                        }
+                    }
+
+                }
+            }
+        },
+    }
 }
 
 /// The shunting yard algorithm by Dijkstra transforms the infix logic expression into postfix.
@@ -1024,7 +1451,7 @@ pub fn shunting_yard_algorithm(tokens: Vec<String>) -> Result<VecDeque<String>, 
         }
         output_queue.push_back(val);
     }
-    //println!("Output Queue: {:?}", output_queue);
+    println!("Output Queue: {:?}", output_queue);
 
     Ok(output_queue)
 }
@@ -1161,8 +1588,15 @@ impl Token {
 /// The return type is a tuple with the first entry being the full AST and the second entry being the root node
 #[macro_export]
 macro_rules! build_ast {
-    ($str_pattern:expr) => {    
-        parse_postfix(shunting_yard_algorithm($str_pattern.split(" ").map(|s| s.to_string()).collect::<Vec<String>>()).unwrap()).unwrap()
+    ($str_pattern:expr) => {
+        match parse_postfix(shunting_yard_algorithm($str_pattern.split(" ").map(|s| s.to_string()).collect::<Vec<String>>()).unwrap()){
+            Ok((ast, root)) => {
+                (ast, root)
+            },
+            Err(e) => {
+                panic!("{}", e);
+            }
+        }
     };
 }
 
@@ -1433,6 +1867,7 @@ fn test_arr() {
     set_var!("arr", "[0,1,2,3]");
     set_var!("arr2", "[0,1,2,3]");
     set_var!("arr3", "[0,1,2,4]");
+    set_var!("arr4", "['hello','user','a',5]");
 
     let (_, root) = build_ast!("$arr == $arr2");
     let val = root.evaluate().unwrap();
@@ -1446,6 +1881,25 @@ fn test_arr() {
     println!("{}", ret);
     assert_eq!(ret, "true");
 
+    println!("{:?}", get_var!("arr4").unwrap());
+
+}
+
+#[test]
+fn convert_values(){
+    set_var!("a", "0xff");
+
+    let (_, root) = build_ast!("$a == 255");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    assert_eq!(ret, "true");
+
+    let (_, root) = build_ast!("255 == $a");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    assert_eq!(ret, "true");
 }
 
 // #[test]
@@ -1513,4 +1967,52 @@ fn test_contains() {
     let ret = val.get_value();
     println!("{}", ret);
     assert_eq!(ret, "false");
+}
+
+#[test]
+fn test_conversion() {
+    let (_, root) = build_ast!("5.as('hex')");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    assert_eq!(ret, "0x5");
+
+    // Output: ["0x5f", "0x5", "-", ".as(u256)"]
+    // Should not work
+    let (_, root) = build_ast!("( 0x5f - 0x5 ).as('u256')");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    assert_eq!(ret, "90");
+
+}
+
+#[test]
+fn test_conversion2() {
+    set_var!("a", "255");
+    let (_, root) = build_ast!("$a.as(hex)");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    assert_eq!(ret, "0xff");
+}
+
+#[test]
+fn test_string_arithmetic(){
+    let (_, root) = build_ast!("0xff.as(u256) - 1");
+
+    let val = root.evaluate().unwrap();
+    let(const_type, value) = val.get_constant_info();
+    println!("{}: {}", const_type, value);
+}
+
+#[test]
+fn test_variable_conversion(){
+    set_var!("a", "255");
+    let (_, root) = build_ast!("( $a.as(hex) - 1 )");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    assert_eq!(ret, "0xff");
+
 }

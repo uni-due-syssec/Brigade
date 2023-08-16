@@ -24,6 +24,10 @@ pub enum ASTError {
     InvalidFunctionInvocation(String),
     #[error("can't invoke function {0} because of missing parameters")]
     InvalidFunctionParameter(String),
+    #[error("can't convert {0} to {1}")]
+    InvalidConversion(String, String),
+    #[error("can't use function as with parameter {0}. Use only strings containing the conversion target")]
+    InvalidConversionTarget(String),
 }
 
 #[derive(Error, Debug)]
