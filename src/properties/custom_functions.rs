@@ -36,7 +36,8 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
         let chain_name = func[0];
         let function = func[1];
         let field_and_type: Vec<&str> = func[2].split(" ").collect();
-        let fieldname = field_and_type[0];        
+        let fieldname = field_and_type[0];
+        // println!("Fieldname: {}", fieldname);
 
         // Build Path for Chain Config
         let f = format!("config/{}_config.json", chain_name);
@@ -50,8 +51,8 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
         let function_name = f[0].clone();
         f.remove(0);
         let parameter_list = f.clone();
-        println!("Function: {}", function_name);
-        println!("Parameters: {:?}", parameter_list);
+        // println!("Function: {}", function_name);
+        // println!("Parameters: {:?}", parameter_list);
 
         let function_path = format!("functions/{}/{}.json", chain_name, function_name);
         //println!("{:?}", function_path);
@@ -63,7 +64,8 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
         let body = res.text().unwrap();
         let json_body: Value = serde_json::from_str(&body.as_str()).unwrap();
         let block_number = json_body.get("result").unwrap();
-        println!("Block Number: {}", block_number.as_str().unwrap());
+        // println!("Block Number: {}", block_number.as_str().unwrap());
+
         let var_name: String = format!("{}_block_number", chain_name);
         set_var!(var_name, block_number.as_str().unwrap());
 
@@ -78,11 +80,11 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
                 // $var | $var - 1 | $var.as(hex)
                 if !s.contains(")."){
                     let (_, root) = build_ast!(s);
-                    println!("Root: {:?}", root);
+                    // println!("Root: {:?}", root);
                     match root.evaluate() {
                         Ok(val) => {
                             s = val.get_value().to_string();
-                            println!("Variable: {}", s);
+                            // println!("Variable: {}", s);
                         },
                         Err(e) => {
                             println!("Variable error: {}", e);
@@ -91,18 +93,18 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
                 }else{// ($var - 1 ). as(hex)
                     let parts: Vec<&str> = s.split(").").collect();
                     let stmt1 = &parts[0][1..];
-                    println!("Statement: {}", stmt1);
+                    // println!("Statement: {}", stmt1);
                     let (_, root) = build_ast!(stmt1);
                     match root.evaluate(){
                         Ok(val) => {
                             // Make Conversion
                             let st = val.get_value().to_string() + "." + parts[1];
-                            println!("Statement: {}", st);
+                            // println!("Statement: {}", st);
                             let (_, stmt2) = build_ast!(st);
-                            match root.evaluate(){
+                            match stmt2.evaluate(){
                                 Ok(val) => {
                                     s = val.get_value().to_string();
-                                    println!("Variable: {}", s);
+                                    // println!("Variable: {}", s);
                                 },
                                 Err(e) => {
                                     println!("Variable error: {}", e);
@@ -118,115 +120,146 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
             }
             params.push(s);
         }
-
-        // let parameters_json: Vec<&str> = parameter_list.split(",").collect();
-        // let mut params: Vec<String> = Vec::new();
-        // // Remove first and last element of parameters
-        // for p in parameters_json{
-        //     let mut s = p.clone().trim().replace("'", "");
-        //     // println!("{}", s);
-        //     if s == "current_block" {
-        //         s = block_number.as_str().unwrap().to_string();    
-        //     }else if s.contains("current_block"){
-        //         // Replace the current_block with the block number and make an u64 from it. Then, make it back to string again and build an AST from it
-        //         let exchanged_string = s.replace("current_block", crate::utils::hex_string_to_u64(block_number.as_str().unwrap()).to_string().as_str());
-        //         let (_, root) = build_ast!(exchanged_string);
-        //         let block = crate::utils::u64_to_hex_string(root.evaluate().unwrap().get_value().parse::<u64>().unwrap());
-        //         s = block.to_string();
-        //     }
-
-                            
-        //     }
-        //     // println!("->{}", s);
-        //     params.push(s);
-        // }
-
+        
         let mut counter = 0;
         replace_variables(&mut function_json, params, &mut counter);
 
-        println!("{:?}", function_json);        
+        // println!("{:?}", function_json);  
 
         let res = client.post(&config.get_http_url()).json(&function_json).send().unwrap();
         let body = res.text().unwrap();
         // println!("{:?}", body);
         let result:Value = serde_json::from_str(&body.as_str()).unwrap();
-        // println!("Result: {:?}", result);
-        if let Some(object) = result.as_object(){
-            let mut found = false;
-            for (key, value) in object{
-                if key == fieldname {
-                    //println!("Found {}", value);
-                    // Change the Value Type
-                    if field_and_type.len() == 3{
-                        let fieldtype = field_and_type[2];
-                        match fieldtype {
-                            "u256" => {
-                                //println!("u256");
-                                let mut temp = value.as_str().unwrap().clone();
-                                if temp.starts_with("0x"){
-                                    let num = utils::hex_string_to_u256(temp).to_string();
-                                    let string_num = "u256:".to_owned() + &num;
-                                    let v = Value::String(string_num);
-                                    //println!("Starts {:?}", v);
-                                    set_var!(variable_name, v.clone());
-                                    results.insert(variable_name.to_string(), v);
-                                }else{
-                                    let v = serde_json::json!(value.clone().as_u64().unwrap());
-                                    //println!("{}", v);
-                                    set_var!(variable_name, v.clone());
-                                    results.insert(variable_name.to_string(), v);
-                                }
-                            },
-                            "i256" => {
-                                //println!("i256");
-                                let mut temp = value.as_str().unwrap().clone();
-                                if temp.starts_with("0x"){
-                                    let v = serde_json::json!(utils::hex_string_to_i256(temp));
-                                    set_var!(variable_name, v.clone());
-                                    results.insert(variable_name.to_string(), v);
-                                }else{
-                                    let v = serde_json::json!(value.clone().as_u64().unwrap());
-                                    set_var!(variable_name, v.clone());
-                                    results.insert(variable_name.to_string(), v);
-                                }
-                            },
-                            "bool" => {
-                                //println!("bool");
-                                let v = serde_json::json!(value.clone().as_bool().unwrap());
-                                set_var!(variable_name, v.clone());
-                                results.insert(variable_name.to_string(), v);
-                            },
-                            "array" => {
-                                //println!("array");
-                                let v = serde_json::json!(value.clone().as_array().unwrap());
-                                set_var!(variable_name, v.clone());
-                                results.insert(variable_name.to_string(), v);
-                            },
-                            "string" => {
-                                //println!("string");
-                                results.insert(variable_name.to_string(), value.clone());
-                                set_var!(variable_name, value.clone());
-                            },
-                            _ => {
-                                println!("Unknown Type");
-                                results.insert(variable_name.to_string(), value.clone());
-                                set_var!(variable_name, value.as_str().unwrap());
-                            }
+        // println!("Result: {}", serde_json::to_string_pretty(&result).unwrap());
+
+        let path_to_val: Vec<&str> = fieldname.split(".").collect();
+        
+        if let Some(v) = find_value_by_path(&result, &path_to_val){
+            println!("Found {} for key {}", v, fieldname);
+            if field_and_type.len() == 3{
+                let fieldtype = field_and_type[2];
+                match fieldtype {
+                    "u256" => {
+                        //println!("u256");
+                        let mut temp = v.as_str().unwrap().clone();
+                        if temp.starts_with("0x"){
+                            let num = utils::hex_string_to_u256(temp).to_string();
+                            let string_num = "u256:".to_owned() + &num;
+                            let val = Value::String(string_num);
+                            //println!("Starts {:?}", v);
+                            set_var!(variable_name, val.clone());
+                            results.insert(variable_name.to_string(), val);
+                        }else{
+                            let val = serde_json::json!(v.clone().as_u64().unwrap());
+                            //println!("{}", v);
+                            set_var!(variable_name, val.clone());
+                            results.insert(variable_name.to_string(), val);
                         }
-                    }else{
-                        results.insert(variable_name.to_string(), value.clone());
-                        set_var!(variable_name, value.as_str().unwrap());
+                    },
+                    "i256" => {
+                        //println!("i256");
+                        let mut temp = v.as_str().unwrap().clone();
+                        if temp.starts_with("0x"){
+                            let val = serde_json::json!(utils::hex_string_to_i256(temp));
+                            set_var!(variable_name, val.clone());
+                            results.insert(variable_name.to_string(), val);
+                        }else{
+                            let val = serde_json::json!(v.clone().as_u64().unwrap());
+                            set_var!(variable_name, val.clone());
+                            results.insert(variable_name.to_string(), val);
+                        }
+                    },
+                    "bool" => {
+                        //println!("bool");
+                        let val = serde_json::json!(v.clone().as_bool().unwrap());
+                        set_var!(variable_name, val.clone());
+                        results.insert(variable_name.to_string(), val);
+                    },
+                    "array" => {
+                        //println!("array");
+                        let val = serde_json::json!(v.clone().as_array().unwrap());
+                        set_var!(variable_name, val.clone());
+                        results.insert(variable_name.to_string(), val);
+                    },
+                    "string" => {
+                        //println!("string");
+                        results.insert(variable_name.to_string(), v.clone());
+                        set_var!(variable_name, v.clone());
+                    },
+                    _ => {
+                        println!("Unknown Type");
+                        results.insert(variable_name.to_string(), v.clone());
+                        set_var!(variable_name, v.as_str().unwrap());
                     }
-                    found = true;
-                    break;
                 }
+            }else{
+                results.insert(variable_name.to_string(), v.clone());
+                set_var!(variable_name, v.as_str().unwrap());
             }
-            if !found {
-                return Err(error::PropertyError::FieldNotFound);
-            }
+        } else {
+            println!("Could not find {} for key {}", result, fieldname);
+            return Err(error::PropertyError::FieldNotFound);
         }
     }
     Ok(results)
+}
+
+/// Find the Json Value by path
+pub fn find_value_by_path(value: &Value, path: &[&str]) -> Option<Value> {
+    if path.is_empty(){
+        Some(value.clone())
+    }else{
+        match value {
+            Value::Object(map) => {
+                let key = path[0];
+                let remaining_path = &path[1..];
+                map.get(key).and_then(|v| find_value_by_path(v, remaining_path))
+            },
+            Value::Array(arr) => {
+                if let Ok(index) = path[0].parse::<usize>() {
+                    let remaining_path = &path[1..];
+                    if let Some(v) = arr.get(index) {
+                        find_value_by_path(v, remaining_path)
+                    }else {
+                        None
+                    }
+                }else{
+                    None
+                }
+            },
+            _ => None
+        }
+    }
+}
+
+#[test]
+fn test_find_by_path() {
+    let json_str = r#"
+        {
+            "result": {
+                "data": {
+                    "value": 42
+                }
+            },
+            "gas": {
+                "price": 10
+            },
+            "some_string": "hello",
+            "some_number": 123,
+            "some_boolean": true,
+            "some_null": null
+        }
+    "#;
+
+    let json: Value = serde_json::from_str(json_str).expect("Failed to parse JSON");
+
+    let path = vec!["some_string"];
+    
+    let v = find_value_by_path(&json, &path).unwrap();
+
+    println!("{:?}", v);
+
+
 }
 
 /// Tokenize Function header
@@ -260,7 +293,7 @@ pub fn tokenize_function(s: String) -> Vec<String>{
         current_token.push(token);
     }
     tokens.push(current_token[..current_token.len()-1].to_string());
-    println!("{:?}", tokens);
+    // println!("{:?}", tokens);
     tokens
 
 }
@@ -279,10 +312,16 @@ pub fn tokenize(s: String) -> Vec<String>{
     // Iterate through the string and split on . if not inside parentheses
     let mut current_token = String::new();
     let mut in_parantheses = 0;
+    let mut was_function = 0; // Check whether we passed the function
+    let mut was_above = false;
+    let mut back_to_zero = false;
     for token in s.chars(){
         if token == '.'{
             // Check if inside parentheses 
-            if in_parantheses == 0{
+            if in_parantheses == 0 && was_function == 0{
+                if back_to_zero{
+                    was_function += 1;
+                }
                 tokens.push(current_token);
                 current_token = String::new();
                 continue;
@@ -290,10 +329,15 @@ pub fn tokenize(s: String) -> Vec<String>{
         }
         if token == '('{
             in_parantheses += 1;
+            was_above = true
         }
 
         if token == ')'{
             in_parantheses -= 1;
+        }
+
+        if in_parantheses == 0 && was_above{
+            back_to_zero = true;
         }
 
         current_token.push(token);
@@ -304,7 +348,7 @@ pub fn tokenize(s: String) -> Vec<String>{
 
 #[test]
 fn test_tokenizer(){
-    let property = "ethereum.get_balance($payer_address, ($block_number.as(u256) - 1).as(hex)).result as u256";
+    let property = "ethereum.get_balance($payer_address, ($block_number.as(u256) - 1).as(hex)).result.gas as u256";
     let tokens = tokenize(property.to_string());
     println!("{:?}", tokens);
 }

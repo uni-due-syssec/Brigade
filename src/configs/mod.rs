@@ -75,7 +75,7 @@ impl ChainConfig {
                 "id": 1
             });
             
-            println!("{:?}", request.to_string());
+            // println!("{:?}", request.to_string());
 
             out.send(request.to_string()).unwrap();
             // Choose correct websocket implementation
@@ -98,7 +98,7 @@ impl ChainConfig {
                 "id": 1
             });
             
-            println!("{:?}", request.to_string());
+            // println!("{:?}", request.to_string());
 
             out.send(request.to_string()).unwrap();
             // Choose correct websocket implementation

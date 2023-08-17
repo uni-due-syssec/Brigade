@@ -28,6 +28,8 @@ pub enum ASTError {
     InvalidConversion(String, String),
     #[error("can't use function as with parameter {0}. Use only strings containing the conversion target")]
     InvalidConversionTarget(String),
+    #[error("unknown conversion target {0}")]
+    UnknownConversionTarget(String),
 }
 
 #[derive(Error, Debug)]

@@ -30,6 +30,9 @@ impl EthereumSocketHandler {
     fn handle_ethereum(&mut self, message: Value) {
         if let Ok(ethereum_msg) = serde_json::from_value::<EthereumEventMessage>(message.clone()) {
 
+            // Add event message params to the variables
+            println!("Message: {}", ethereum_msg);
+
             // A new Event is emitted --> A new Index in the properties list must be added
             self.properties.push(Properties::new());
             let index = self.properties.len() - 1;

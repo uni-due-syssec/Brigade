@@ -24,7 +24,7 @@ pub enum ConversionTarget {
     Number,
     SignedNumber,
     Hex,
-    Unknown,
+    Unknown(String),
 }
 
 impl From<&str> for ConversionTarget {
@@ -34,7 +34,7 @@ impl From<&str> for ConversionTarget {
             "u256" | "'u256'" => ConversionTarget::Number,
             "i256" | "'i256'" => ConversionTarget::SignedNumber,
             "hex" | "'hex'" => ConversionTarget::Hex,
-            _ => ConversionTarget::Unknown,
+            _ => ConversionTarget::Unknown(s.to_string()),
         }
     }
 }
@@ -248,7 +248,10 @@ impl ASTConstant{
                     _ => Err(ASTError::InvalidConversion(self.get_value().to_string(), "hex".to_string()))
                 }
             },
-            ConversionTarget::Unknown => todo!(),
+            ConversionTarget::Unknown(s) => {
+                println!("Unknown conversion target {}", s);
+                Err(ASTError::UnknownConversionTarget(s))
+            },
         }
     }
 
@@ -313,7 +316,7 @@ impl ASTNode {
 
                 match get_variable(map_ref, name) {
                     Some(value) => {
-                        println!("{:?}", value);
+                        // println!("{:?}", value);
                         Ok(value.evaluate()?)
                     },
                     None => Err(ASTError::VariableNotFound { var: name.clone() }),
@@ -1059,8 +1062,8 @@ impl ASTNode {
                         let me = args[0].evaluate()?;
                         let type_name = args[1].evaluate()?;
                         
-                        println!("Type name: {}", type_name.get_value());
-                        println!("Me: {}", me.get_value());
+                        // println!("Type name: {}", type_name.get_value());
+                        // println!("Me: {}", me.get_value());
 
                         let conv = ConversionTarget::from(type_name.get_value().as_str());
 
@@ -1249,7 +1252,7 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
                             }
                         },
                         Err(_) => {
-                            println!("{} is not an Logic Operator", token);
+                            println!("{} is not a Logic Operator", token);
                         }
                     }
                 },
@@ -1451,7 +1454,7 @@ pub fn shunting_yard_algorithm(tokens: Vec<String>) -> Result<VecDeque<String>, 
         }
         output_queue.push_back(val);
     }
-    println!("Output Queue: {:?}", output_queue);
+    // println!("Output Queue: {:?}", output_queue);
 
     Ok(output_queue)
 }

@@ -41,6 +41,8 @@ struct Args {
 
 fn main() {
 
+
+    // Argument parsing
     let args = Args::parse();
     let mut ip_addr = "127.0.0.1:8080".to_string();
 
@@ -50,10 +52,12 @@ fn main() {
 
     println!("Connecting at {}", ip_addr);
 
+    // Start threads for Chains and Events
     let mut thread_ids = vec![];
     let mut thread_names: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let dir = Path::new("config");
 
+    // Build Message Channels
     let (tx, rx) :(Sender<Properties>, Receiver<Properties>) = mpsc::channel();
 
     let event_thread = thread::spawn(move || {
@@ -89,7 +93,6 @@ fn main() {
             // Deserialize the file contents into a ChainConfig
             let contents = fs::read_to_string(path).unwrap();
             let config: ChainConfig = serde_json::from_str(&contents).unwrap();
-            println!("{:?}", config);
             let mut t = thread_names_clone.lock().unwrap();
             t.push(config.get_name());
             
@@ -120,11 +123,13 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
         }
     }
 
-    println!("Variables: {:?}", list_variables(get_variable_map_instance()));
+    // println!("Variables: {:?}", list_variables(get_variable_map_instance()));
 
     // Which Event?
     let event = property.occured_event.clone().unwrap();
-    println!("Event: {}", event);
+    println!("Event: {}", event.blue());
+    println!("Transaction Hash: {}", property.transaction_hash.clone().unwrap().blue());
+    println!("Chain: {}", property.src_chain.clone().unwrap().blue());
 
     // Results of the separate files
     let mut results: Vec<bool> = vec![];
@@ -163,7 +168,7 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
         checked_vec.push(name.clone().to_owned());
         
         // Execute Custom Functions and get Variables
-        let vars = execute_custom_function(&def_file).unwrap();
+        let _ = execute_custom_function(&def_file).unwrap();
 
         // for (key, value) in vars {
         //     if value.is_string() && value.as_str().unwrap().starts_with("u256:"){
@@ -182,7 +187,7 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
         let pattern = def_file.get("pattern").unwrap().as_array().unwrap();
         // Transform all patterns into one large string
         let processed_pattern = pattern.iter().map(|p| p.as_str().unwrap().to_string()).collect::<Vec<String>>().join(" && ");
-        println!("Pattern: {}", processed_pattern);
+        // println!("Pattern: {}", processed_pattern);
 
         let (ast, root) = build_ast!(processed_pattern);
 

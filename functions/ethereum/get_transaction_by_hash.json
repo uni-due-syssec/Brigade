@@ -1,0 +1,6 @@
+{
+    "jsonrpc": "2.0",
+    "method": "eth_getTransactionByHash",
+    "params": ["$transaction_hash"],
+    "id": 0
+}
