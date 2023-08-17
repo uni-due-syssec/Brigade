@@ -6,7 +6,7 @@ use std::sync::Once;
 
 use crate::utils;
 
-use super::ast::ASTNode;
+use super::ast::{ASTNode, ASTConstant};
 
 use ethnum::{u256, i256, int, uint, AsI256, AsU256, U256, I256};
 use serde_json::Value;
@@ -324,65 +324,65 @@ impl From<&str> for VarValues {
     }
 }
 
-impl From<Vec<VarValues>> for VarValues {
-    fn from(v: Vec<VarValues>) -> Self {
-        VarValues::Array(v)
-    }
-}
+// impl From<Vec<VarValues>> for VarValues {
+//     fn from(v: Vec<VarValues>) -> Self {
+//         VarValues::Array(v)
+//     }
+// }
 
-impl From<Vec<u256>> for VarValues {
-    fn from(v: Vec<u256>) -> Self {
-        VarValues::Array(v.iter().map(|x| VarValues::from(*x)).collect())
-    }
-}
+// impl From<Vec<u256>> for VarValues {
+//     fn from(v: Vec<u256>) -> Self {
+//         VarValues::Array(v.iter().map(|x| VarValues::from(*x)).collect())
+//     }
+// }
 
-impl From<Vec<i256>> for VarValues {
-    fn from(v: Vec<i256>) -> Self {
-        VarValues::Array(v.iter().map(|x| VarValues::from(*x)).collect())
-    }
-}
+// impl From<Vec<i256>> for VarValues {
+//     fn from(v: Vec<i256>) -> Self {
+//         VarValues::Array(v.iter().map(|x| VarValues::from(*x)).collect())
+//     }
+// }
 
-impl From<Vec<u64>> for VarValues {
-    fn from(v: Vec<u64>) -> Self {
-        let arr = v.iter().map(|x| VarValues::from(*x)).collect();
-        VarValues::Array(arr)
-    }
-}
+// impl From<Vec<u64>> for VarValues {
+//     fn from(v: Vec<u64>) -> Self {
+//         let arr = v.iter().map(|x| VarValues::from(*x)).collect();
+//         VarValues::Array(arr)
+//     }
+// }
 
-impl From<Vec<i64>> for VarValues {
-    fn from(v: Vec<i64>) -> Self {
-        let arr = v.iter().map(|x| VarValues::from(*x)).collect();
-        VarValues::Array(arr)
-    }
-}
+// impl From<Vec<i64>> for VarValues {
+//     fn from(v: Vec<i64>) -> Self {
+//         let arr = v.iter().map(|x| VarValues::from(*x)).collect();
+//         VarValues::Array(arr)
+//     }
+// }
 
-impl From<Vec<u32>> for VarValues {
-    fn from(v: Vec<u32>) -> Self {
-        let arr = v.iter().map(|x| VarValues::from(*x)).collect();
-        VarValues::Array(arr)
-    }
-}
+// impl From<Vec<u32>> for VarValues {
+//     fn from(v: Vec<u32>) -> Self {
+//         let arr = v.iter().map(|x| VarValues::from(*x)).collect();
+//         VarValues::Array(arr)
+//     }
+// }
 
-impl From<Vec<i32>> for VarValues {
-    fn from(v: Vec<i32>) -> Self {
-        let arr = v.iter().map(|x| VarValues::from(*x)).collect();
-        VarValues::Array(arr)
-    }
-}
+// impl From<Vec<i32>> for VarValues {
+//     fn from(v: Vec<i32>) -> Self {
+//         let arr = v.iter().map(|x| VarValues::from(*x)).collect();
+//         VarValues::Array(arr)
+//     }
+// }
 
-impl From<Vec<bool>> for VarValues {
-    fn from(v: Vec<bool>) -> Self {
-        let arr = v.iter().map(|x| VarValues::from(*x)).collect();
-        VarValues::Array(arr)
-    }
-}
+// impl From<Vec<bool>> for VarValues {
+//     fn from(v: Vec<bool>) -> Self {
+//         let arr = v.iter().map(|x| VarValues::from(*x)).collect();
+//         VarValues::Array(arr)
+//     }
+// }
 
-impl From<Vec<String>> for VarValues {
-    fn from(v: Vec<String>) -> Self {
-        let arr = v.iter().map(|x| VarValues::from(x.clone())).collect();
-        VarValues::Array(arr)
-    }
-}
+// impl From<Vec<String>> for VarValues {
+//     fn from(v: Vec<String>) -> Self {
+//         let arr = v.iter().map(|x| VarValues::from(x.clone())).collect();
+//         VarValues::Array(arr)
+//     }
+// }
 
 impl From<String> for VarValues {
     fn from(s: String) -> Self {
@@ -468,6 +468,36 @@ impl From<Value> for VarValues {
     }
 }
 
+impl<T: Clone, const N: usize> From<[T; N]> for VarValues 
+where
+    VarValues: From<T>,
+{
+    fn from(arr: [T; N]) -> Self {
+        VarValues::Array(arr.iter().map(|x| VarValues::from(x.clone())).collect())
+    }
+}
+
+impl From<ASTConstant> for VarValues{
+    fn from(s: ASTConstant) -> Self {
+        match s {
+            ASTConstant::String(s) => VarValues::String(s),
+            ASTConstant::Number(s) => VarValues::Number(s),
+            ASTConstant::SignedNumber(s) => VarValues::SignedNumber(s),
+            ASTConstant::Bool(s) => VarValues::Bool(s),
+            _ => VarValues::String(s.get_value()),
+        }
+    }
+}
+
+impl<T: Clone> From<Vec<T>> for VarValues
+where
+    VarValues: From<T>,
+{
+    fn from(v: Vec<T>) -> Self {
+        VarValues::Array(v.iter().map(|x| VarValues::from(x.clone())).collect())
+    }
+}
+    
 impl PartialEq<str> for VarValues {
     fn eq(&self, other: &str) -> bool {
         match self {
@@ -697,6 +727,21 @@ fn test_var_u256() {
     set_var!("num", v);
 
     set_variable(get_variable_map_instance(), "k", v.to_string());
+
+    println!("{:?}", get_variable_map_instance());
+}
+
+#[test]
+fn test_keystore() {
+    set_var!("keystore", [0,1,2,3]);
+    let keystore: VarValues = get_var!("keystore").expect("Value not found");
+
+    println!("{:?}", get_variable_map_instance());
+
+    let mut key_vec: Vec<u64> = Vec::get_value(keystore).unwrap();
+    key_vec.push(9);
+
+    set_var!("keystore", key_vec.clone());
 
     println!("{:?}", get_variable_map_instance());
 }

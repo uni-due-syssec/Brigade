@@ -122,9 +122,12 @@ impl ArithmeticOperator{
 
 #[derive(Debug, Clone)]
 pub enum Functions{
-    Contains, // Returns true if ASTNode Array contains a ASTNode value
-    At, // Returns the ASTNode value at index
-    As, // Converts the value to correct representation
+    Contains, // Returns true if ASTNode Array contains a ASTNode value contains(value)
+    At, // Returns the ASTNode value at index at(index)
+    As, // Converts the value to correct representation as(type)
+    Slice, // Slice Strings and return a String with character from to slice(start inclusive, end exclusive)
+    Push, // Push value to the end of the keystore
+    Pop, // Pop value from the end of the keystore
 }
 
 impl Functions{
@@ -133,6 +136,9 @@ impl Functions{
             Functions::Contains => "contains",
             Functions::At => "at",
             Functions::As => "as",
+            Functions::Slice => "slice",
+            Functions::Push => "push",
+            Functions::Pop => "pop",
         }
     }
 
@@ -141,6 +147,9 @@ impl Functions{
             "contains" => Ok(Functions::Contains),
             "at" => Ok(Functions::At),
             "as" => Ok(Functions::As),
+            "slice" => Ok(Functions::Slice),
+            "push" => Ok(Functions::Push),
+            "pop" => Ok(Functions::Pop),
             _ => Err(ASTError::InvalidFunction(string.to_owned())),
         }
     }
@@ -149,6 +158,11 @@ impl Functions{
         let s = string[0..string.len()-1].to_owned();
         Some(s.split(",").map(|s| s.trim().to_string()).collect())
     }
+}
+
+#[test]
+fn test_args(){
+    println!("{:?}", Functions::get_args("1, 222)"));
 }
 
 /// AST Node which contains leaves and branches for an Abstract Syntax Tree
@@ -176,6 +190,42 @@ pub enum ASTNode {
 
     // Functions
     Function(Functions, Vec<Box<ASTNode>>),
+}
+
+impl From<String> for ASTNode {
+    fn from(s: String) -> Self {
+        if s.starts_with('$'){
+            return ASTNode::Variable(s[1..].to_owned(), get_variable_map_instance());
+        }
+        ASTNode::ConstantString(s)
+    }
+}
+
+impl From<&str> for ASTNode {
+    fn from(s: &str) -> Self {
+        if s.starts_with("$"){
+            return ASTNode::Variable(s[1..].to_owned(), get_variable_map_instance());
+        }
+        ASTNode::ConstantString(s.to_owned())
+    }
+}
+
+impl From<u256> for ASTNode {
+    fn from(s: u256) -> Self {
+        ASTNode::ConstantNumber(s)
+    }
+}
+
+impl From<i256> for ASTNode {
+    fn from(s: i256) -> Self {
+        ASTNode::ConstantSignedNumber(s)
+    }
+}
+
+impl From<bool> for ASTNode {
+    fn from(s: bool) -> Self {
+        ASTNode::ConstantBool(s)
+    }
 }
 
 /// AST Value which contains a constant value
@@ -1076,7 +1126,139 @@ impl ASTNode {
                                 Ok(me)
                             }
                         }
-                    }
+                    },
+                    Functions::Slice => {
+                        let me = args[0].evaluate()?;
+                        let start = args[1].evaluate()?;
+                        let end = args[2].evaluate()?;
+
+                        let start_index = start.get_value().parse::<usize>().expect("start index must be an integer");
+                        let end_index = end.get_value().parse::<usize>().expect("end index must be an integer");
+
+                        match me {
+                            ASTConstant::Array(arr) => {
+                                Ok(ASTConstant::Array(arr[start_index..end_index].to_vec()))
+                            },
+                            ASTConstant::String(s) => {
+                                if end_index > s.len() {
+                                    return Err(ASTError::InvalidSlice(s.clone(), start_index, end_index, s.len()));
+                                }
+                                Ok(ASTConstant::String(s[start_index..end_index].to_string()))
+                            }
+                            _ => Err(ASTError::InvalidFunctionInvocation("slice".to_owned())),
+                        }
+
+                    },
+                    Functions::Push => {
+                        let node = args[0].clone();
+                        let me = args[0].evaluate()?;
+                        let value = args[1].evaluate()?;
+                        match me {
+                            ASTConstant::Array(arr) => {
+                                if let ASTNode::Variable(name, map) = *node {
+                                    println!("Variable name: {}", name);
+                                    if let Some(a) = get_var!(&name){
+                                        match a{
+                                            VarValues::Array(mut inner) => {
+
+                                                match value{
+                                                    ASTConstant::Array(arr) => {
+                                                        for item in arr{
+                                                            inner.push(VarValues::from(item));
+                                                        }
+                                                        set_var!(name, VarValues::Array(inner));
+                                                        Ok(ASTConstant::Bool(true))
+                                                    },
+                                                    ASTConstant::Bool(v) => {
+                                                        inner.push(VarValues::from(v));
+                                                        set_var!(name, VarValues::Array(inner));
+                                                        Ok(ASTConstant::Bool(true))
+                                                    },
+                                                    ASTConstant::Number(v) => {
+                                                        inner.push(VarValues::from(v));
+                                                        set_var!(name, VarValues::Array(inner));
+                                                        Ok(ASTConstant::Bool(true))
+                                                    },
+                                                    ASTConstant::SignedNumber(v) => {
+                                                        inner.push(VarValues::from(v));
+                                                        set_var!(name, VarValues::Array(inner));
+                                                        Ok(ASTConstant::Bool(true))
+                                                    },
+                                                    ASTConstant::String(v) => {
+                                                        inner.push(VarValues::from(v));
+                                                        set_var!(name, VarValues::Array(inner));
+                                                        Ok(ASTConstant::Bool(true))
+                                                    }
+                                                }
+                                            },
+                                            _ => {
+                                                return Err(ASTError::InvalidFunctionInvocation("push".to_owned()));
+                                            }
+                                        }
+                                    }else{
+                                        println!("Variable not found: {}", name);
+                                        // Build new Array and push
+                                        match value {
+                                            ASTConstant::Bool(v) => {
+                                                let new_arr: Vec<VarValues> = vec![VarValues::from(v)];
+                                                set_var!(name, new_arr);
+                                                return Ok(ASTConstant::Bool(true));
+                                            },
+                                            ASTConstant::Number(v) => {
+                                                let new_arr: Vec<VarValues> = vec![VarValues::from(v)];
+                                                set_var!(name, new_arr);
+                                                return Ok(ASTConstant::Bool(true));
+                                            },
+                                            ASTConstant::SignedNumber(v) => {
+                                                let new_arr: Vec<VarValues> = vec![VarValues::from(v)];
+                                                set_var!(name, new_arr);
+                                                return Ok(ASTConstant::Bool(true));
+                                            },
+                                            ASTConstant::String(v) => {
+                                                let new_arr: Vec<VarValues> = vec![VarValues::from(v)];
+                                                set_var!(name, new_arr);
+                                                return Ok(ASTConstant::Bool(true));
+                                            }
+                                            _ => {
+                                                return Err(ASTError::InvalidFunctionInvocation("push".to_owned()));
+                                            }
+                                        }
+                                    }
+                                }else{
+                                    Err(ASTError::InvalidFunctionInvocation("push".to_owned()))
+                                }
+                            },
+                            ASTConstant::String(s) => {
+                                let new_string = format!("{}{}", s, value.get_value());
+                                Ok(ASTConstant::String(new_string))
+                            },
+                            _ => {
+                                return Err(ASTError::InvalidFunctionInvocation("push".to_owned()));
+                            }
+                        }
+                    },
+                    Functions::Pop => {
+                        let me = args[0].clone().evaluate()?;
+                        match me {
+                            ASTConstant::Array(mut arr) => {
+                                
+                                let last = arr.pop().unwrap();
+                                if let ASTNode::Variable(name, _) = *args[0].clone() {
+                                    set_var!(name, arr);    
+                                }
+                                
+                                match last {
+                                    ASTConstant::Bool(v) => Ok(ASTConstant::Bool(v)),
+                                    ASTConstant::Number(v) => Ok(ASTConstant::Number(v)),
+                                    ASTConstant::SignedNumber(v) => Ok(ASTConstant::SignedNumber(v)),
+                                    ASTConstant::String(v) => Ok(ASTConstant::String(v)),
+                                    _ => Err(ASTError::InvalidFunctionInvocation("pop".to_owned())),
+                                }
+
+                            },
+                            _ => Err(ASTError::InvalidFunctionInvocation("pop".to_owned())),
+                        }
+                    },
                 }
             },
             ASTNode::Array(val) => {
@@ -1311,7 +1493,46 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
                             }else{
                                 return Err(ASTError::InvalidFunctionParameter("as".to_owned()))
                             }
-                        }
+                        },
+                        "slice" => {
+                            if let Some(arg) = args{
+                                if arg.len() != 2{
+                                    println!("{:?}", arg);
+                                    return Err(ASTError::InvalidFunctionParameter("slice".to_owned()))
+                                }
+                                let node = ASTNode::Function(Functions::Slice, vec![
+                                    Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
+                                    Box::new(ASTNode::ConstantNumber(arg[0].clone().parse::<u256>().unwrap())),   // Starting index
+                                    Box::new(ASTNode::ConstantNumber(arg[1].clone().parse::<u256>().unwrap()))   // Ending index
+                                ]);
+                                ast_vec.push(node.clone());
+                                stack.push(node);
+                            }else{
+                                return Err(ASTError::InvalidFunctionParameter("slice".to_owned()))
+                            }
+                        },
+                        "push" => {
+                            if let Some(arg) = args{
+                                if arg.len() != 1{
+                                    return Err(ASTError::InvalidFunctionParameter("push".to_owned()))
+                                }
+                                let node = ASTNode::Function(Functions::Push, vec![
+                                    Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
+                                    Box::new(ASTNode::from(arg[0].clone()))   // Argument to the function
+                                ]);
+                                ast_vec.push(node.clone());
+                                stack.push(node);
+                            }else{
+                                return Err(ASTError::InvalidFunctionParameter("push".to_owned()))
+                            }
+                        },
+                        "pop" => {
+                            let node = ASTNode::Function(Functions::Pop, vec![
+                                Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
+                            ]);
+                            ast_vec.push(node.clone());
+                            stack.push(node);
+                        },
                         _ => {
                             todo!("Implement more functions");
                         }
@@ -1346,7 +1567,21 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
                                 return Err(ASTError::InvalidFunctionParameter("as".to_owned()))
                             }
                         },
+                        "push" => {
+                            if let Some(arg) = args{
+                                if arg.len() != 1{
+                                    return Err(ASTError::InvalidFunctionParameter("push".to_owned()))
+                                }
+                                let node = ASTNode::Function(Functions::Push, vec![
+                                    Box::new(parse_token(parts[0].to_string()).expect("Could not parse token")), // Pointer to variable
+                                    Box::new(ASTNode::from(arg[0].clone()))   // Argument to the function
+                                ]);
+                                ast_vec.push(node.clone());
+                                stack.push(node);
+                            }
+                        },
                         _ => {
+                            println!("{} is not a function", token);
                             todo!("Implement more functions");
                         }
                     }
@@ -1530,61 +1765,50 @@ impl Token {
     }
 }
 
-// /// Tokenizer for input strings into the ast
-// fn tokenize(input: &str) -> Vec<Token>{
-//     let mut tokens: Vec<Token> = vec![];
-    
-//     let token_patterns = [
-//         ("BOOL", "(true|false)"),
-//         ("OPERATOR", r#"\+|\-|\*|\/|\%|neg|\\<|\\>|\\<=|\\>=|\=\=|\!\=|\!"#),
-//         ("FUNCTION", r#"\.([^\d]+)\("#),
-//         ("VAR", r#"\$(\w*)[^.]"#),
-//         ("NUMBER", r#"\d+(\.\d+)?"#),
-//         ("WORD", "([a-zA-Z]*)"),
-//     ];
+pub fn tokenize(text: String) -> Vec<String> {
+    let mut tokens = vec![];
 
-//     let mut remaining_input = input;
-//     while !remaining_input.is_empty() {
-//         let mut matched_token = None;
-//         let mut matched_token_length = 0;
+    let mut current_token = String::new();
+    let mut is_in_function = false;
+    let mut last_point = false;
+    for c in text.chars(){
+        if c.is_whitespace() && !is_in_function {
+            tokens.push(current_token);
+            current_token = String::new();
+            last_point = false;
 
-//         for &(token_type, pattern) in &token_patterns {
-//             println!("Matching pattern {} with {}", token_type, remaining_input);
-//             let regex = Regex::new(&format!("{}", pattern)).unwrap();
-//             if let Some(matched) = regex.find(remaining_input) {
-//                 let token = matched.as_str().to_string();
-//                 println!("{}: {}", token_type, token);
-//                 let token_length = matched.end();
-//                 if token_length > matched_token_length {
-//                     matched_token = Some((token_type.to_string(), token));
-//                     matched_token_length = token_length;
-//                 }
-//             }
+            continue;
+        }
 
-//             if let Some((_, tok)) = matched_token {
-//                 println!("{}: {}", token_type, tok);
-//                 let t = match token_type {
-//                     "NUMBER" => Token::Number(tok.parse::<f64>().unwrap()),
-//                     "BOOL" => Token::Bool(tok.parse::<bool>().unwrap()),
-//                     "WORD" => Token::Word(tok.to_string()),
-//                     "OPERATOR" => Token::Operator(tok.to_string()),
-//                     "FUNCTION" => Token::Function(is_function(&tok).unwrap()),
-//                     "VAR" => Token::Variable(tok.to_string()),
-//                     "PARAMS" => Token::Params(Box::new(Token::from_str("PARAMS", &tok).unwrap())),
-//                     _ => panic!("Invalid Token"),
-//                 };
-//                 tokens.push(t);
-//                 remaining_input = &remaining_input[matched_token_length..];
-//             }
-//             else{
-//                 panic!("Unkown token at position {}", input.len() - remaining_input.len());
-//             }
-//         }
-//     }
+        if c == '.' {
+            last_point = true;
+        }
 
-//     tokens
+        if c == '(' && last_point {
+            is_in_function = true;
+        }
 
-// }
+        if c == ')' && is_in_function {
+            is_in_function = false;
+        }
+
+        current_token.push(c);
+    }
+    tokens.push(current_token);
+    println!("Tokens: {:?}", tokens);
+    tokens
+}
+
+#[test]
+fn test_tokenizer() {
+    let text = "$event_data.slice(0, 64) > 0 && $event_data.slice(0, 64) < 100".to_string();
+
+    let tokens = tokenize(text.clone());
+    println!("{:?}", tokens);
+
+    let test = text.split(" ").map(|s| s.to_string()).collect::<Vec<String>>();
+    println!("{:?}", test);
+}
 
 /// This macro builds an AST from a string
 /// The input is a string with the infix notation separated by spaces
@@ -1592,7 +1816,7 @@ impl Token {
 #[macro_export]
 macro_rules! build_ast {
     ($str_pattern:expr) => {
-        match parse_postfix(shunting_yard_algorithm($str_pattern.split(" ").map(|s| s.to_string()).collect::<Vec<String>>()).unwrap()){
+        match parse_postfix(shunting_yard_algorithm(tokenize($str_pattern.to_string())).unwrap()){
             Ok((ast, root)) => {
                 (ast, root)
             },
@@ -2018,4 +2242,61 @@ fn test_variable_conversion(){
     println!("{}", ret);
     assert_eq!(ret, "0xff");
 
+}
+
+#[test]
+fn test_slices() {
+    set_var!("arr", "[0,1,2,3]");
+
+    let (_, root) = build_ast!("$arr.slice(1,3)");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    assert_eq!(ret, "[1,2]");
+
+    set_var!("string", "hello");
+    let (_, root) = build_ast!("$string.slice(1,5)");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    assert_eq!(ret, "ello");
+}
+
+#[test]
+fn test_push() {
+
+    let(_, root) = build_ast!("hello.push(a)");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    assert_eq!(ret, "helloa");
+
+    set_var!("some_array", "[0,1,2,3]");
+
+    let (_, root) = build_ast!("$some_array.push(5)");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    println!("{:?}", get_var!("some_array").unwrap());
+    assert_eq!(ret, "true");
+
+    set_var!("num", 10);
+    let (_, root) = build_ast!("$some_array.push($num)");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    println!("{:?}", get_var!("some_array").unwrap());
+    assert_eq!(ret, "true");
+
+
+}
+
+#[test]
+fn test_pop() {
+    set_var!("some_array", "[0,1,2,3]");
+    let (_, root) = build_ast!("$some_array.pop()");
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    println!("{:?}", get_var!("some_array").unwrap());
 }

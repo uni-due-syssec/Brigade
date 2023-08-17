@@ -30,6 +30,8 @@ pub enum ASTError {
     InvalidConversionTarget(String),
     #[error("unknown conversion target {0}")]
     UnknownConversionTarget(String),
+    #[error("can't slice out of bounds for {0} from {1} to {2} for length {3}")]
+    InvalidSlice(String, usize, usize, usize),
 }
 
 #[derive(Error, Debug)]

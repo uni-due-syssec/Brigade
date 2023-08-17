@@ -4,7 +4,9 @@ use serde_json::Value;
 use ws::Handler;
 use reqwest::blocking::Client;
 
-use crate::{properties::Properties, utils, message_formats::ethereum_message::*};
+use crate::{properties::Properties, utils, message_formats::ethereum_message::*, set_var};
+use crate::VarValues;
+use crate::get_variable_map_instance;
 
 /// Ethereum Websocket Handler
 pub struct EthereumSocketHandler{
@@ -32,6 +34,9 @@ impl EthereumSocketHandler {
 
             // Add event message params to the variables
             println!("Message: {}", ethereum_msg);
+
+            let event_data = ethereum_msg.params.result.data.clone().strip_prefix("0x").unwrap().to_string();
+            set_var!("event_data", event_data);
 
             // A new Event is emitted --> A new Index in the properties list must be added
             self.properties.push(Properties::new());

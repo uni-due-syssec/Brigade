@@ -80,6 +80,9 @@ fn main() {
     thread_ids.push(event_thread);
     thread_names.lock().unwrap().push("event".to_string());
 
+    // Setup persistent keystore
+    set_var!("keystore", VarValues::Array(vec![]));
+
     // Run through all files in directory dir and print their paths
     for entry in fs::read_dir(dir).unwrap() {
         let path = entry.unwrap().path();
@@ -218,6 +221,8 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
     };
 
     event_queue.push(event);
+
+    println!("Variables: {:?}", get_variable_map_instance());
 
     // Check all results and only allow when all are true
     if results.iter().all(|x| *x) {

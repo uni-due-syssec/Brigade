@@ -91,7 +91,7 @@ pub fn get_ethereum_topic_ids(event_header: &str) -> String {
 
 #[test]
 fn test_topic_ids_ethereum(){
-    let event_header = "InconsistentDepositLogic(uint256,string,uint256)";
+    let event_header = "ProofCreated(bytes32,address)";
     let topic_id = get_ethereum_topic_ids(event_header);
     println!("{}", topic_id);
 }

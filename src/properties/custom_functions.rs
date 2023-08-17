@@ -29,6 +29,21 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
     let mut results: HashMap<String, Value> = HashMap::new();
     let properties = val.get("properties").unwrap().as_object().unwrap();
     for (variable_name, value) in properties{
+
+        if value.as_str().unwrap().starts_with('$'){
+            //  Only Parse the variables 
+            // println!("Variable: {}", variable_name);
+            println!("{}: {}", variable_name, value.as_str().unwrap());
+            let (_, root) = build_ast!(value.as_str().unwrap());
+            if let Ok(r) = root.evaluate() {
+                // println!("Evaluated: {}", variable_name);
+                set_var!(variable_name, r);
+            }else{
+                println!("Failed to evaluate: {}", variable_name);
+            }
+            continue;
+        }
+
         //println!("{:?} {:?}", key, value.as_str().unwrap());
         let tokens = tokenize(value.as_str().unwrap().to_string());
         //let p = value.as_str().unwrap().split('.');
@@ -120,7 +135,7 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
             }
             params.push(s);
         }
-        
+
         let mut counter = 0;
         replace_variables(&mut function_json, params, &mut counter);
 
