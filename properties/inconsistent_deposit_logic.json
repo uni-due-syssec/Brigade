@@ -8,6 +8,7 @@
         "gas_price": "ethereum.get_transaction_by_hash($transaction_hash).result.gasPrice"
     },
     "pattern": [
-        "$balance_after.as(u256) + ( $gas_amount.as(u256) * $gas_price.as(u256) ) < $balance_before.as(u256)"
+        "$balance_after.as(u256) + ( $gas_amount.as(u256) * $gas_price.as(u256) ) < $balance_before.as(u256)",
+        "$balance_after.as(u256) + ( $gas_amount.as(u256) * $gas_price.as(u256) ) + $value == $balance_before.as(u256)"
     ]
 }
