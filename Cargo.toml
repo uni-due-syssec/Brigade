@@ -7,12 +7,15 @@ authors = ["Pascal Winkler <pascal.winkler@uni-due.de>"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [profile.dev]
-#rustc-wrapper = "/root/.cargo/bin/sccache"
-rustc-wrapper = "C:\\Users\\paswi\\.cargo\\bin\\sccache.exe"
+debug = true
+incremental = true
+#lto = true
+codegen-units = 1
+panic = "abort"
+warn = ["all"]
 
-[profile.release]
-#rustc-wrapper = "/root/.cargo/bin/sccache"
-rustc-wrapper = "C:\\Users\\paswi\\.cargo\\bin\\sccache.exe"
+[package.metadata.cargo-aliased]
+run = "sccache cargo run"
 
 [dependencies]
 serde = {version = "1.0.164", features = ["derive"] }

@@ -40,4 +40,8 @@ pub enum PropertyError {
     InvalidProperty,  
     #[error("the fieldname does not exist or an invalid response was returned")]
     FieldNotFound, 
+    #[error("the property is not found")]
+    PropertyNotFound,
+    #[error("cyclic dependencies detected")]
+    CyclicDependencies,
 }

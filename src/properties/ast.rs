@@ -292,7 +292,11 @@ impl ASTConstant{
                         if v.starts_with("0x"){
                             Ok(ASTConstant::String(v.to_string()))
                         }else{
-                            Err(ASTError::InvalidConversion(v.to_string(), "hex".to_string()))
+                            // TODO: Add the prefix to already correct hex_strings. Check if correct hex number
+                            match u256::from_str_radix(v, 16){
+                                Ok(v) => Ok(ASTConstant::String(format!("0x{:x}", v))),
+                                Err(e) =>Err(ASTError::InvalidConversion(v.to_string(), "hex".to_string()))
+                            }
                         }
                     }
                     _ => Err(ASTError::InvalidConversion(self.get_value().to_string(), "hex".to_string()))
@@ -1717,14 +1721,13 @@ impl Token {
 }
 
 pub fn tokenize(text: String) -> Vec<String> {
-    println!("Text: {}", text);
     let mut tokens = vec![];
 
     let mut current_token = String::new();
-    let mut is_in_function = false;
+    let mut is_in_function = 0;
     let mut last_point = false;
     for c in text.chars(){
-        if c.is_whitespace() && !is_in_function {
+        if c.is_whitespace() && is_in_function == 0 {
             tokens.push(current_token);
             current_token = String::new();
             last_point = false;
@@ -1737,25 +1740,41 @@ pub fn tokenize(text: String) -> Vec<String> {
         }
 
         if c == '(' && last_point {
-            is_in_function = true;
+            is_in_function += 1;
         }
 
-        if c == ')' && is_in_function {
-            is_in_function = false;
-            last_point = false;
+        if c == ')' && is_in_function > 0 {
+            is_in_function -= 1;
+            
+            if is_in_function == 0 {
+                last_point = false;    
+            }
         }
 
         current_token.push(c);
     }
     tokens.push(current_token);
-    println!("Tokens: {:?}", tokens);
     tokens
+}
+
+/// Build an AST and return the root node
+pub fn build_ast_root(text: String) -> Result<ASTNode, &'static str>{
+    let tokens = tokenize(text);
+    if let Ok(postfix) = shunting_yard_algorithm(tokens){
+        if let Ok((_, root)) = parse_postfix(postfix){
+            Ok(root)
+        }else{
+            Err("Invalid AST")
+        }
+    }else{
+        Err("Invalid AST")
+    }
 }
 
 #[test]
 fn test_tokenizer() {
     // let text = "$event_data.slice(0, 64) > 0 && $event_data.slice(0, 64) < 100".to_string();
-    let text = "$event_data.slice(0, 64)".to_string();
+    let text = "ethereum.get_balance($payer_address, $ethereum_block_number.as(hex)).result".to_string();
     let tokens = tokenize(text.clone());
     println!("{:?}", tokens);
 
@@ -2234,4 +2253,14 @@ fn test_pop() {
     let ret = val.get_value();
     println!("{}", ret);
     println!("{:?}", get_var!("some_array").unwrap());
+}
+
+#[test]
+fn test_as_hex_again() {
+    let root = build_ast_root("e998908042a5043d06846c76bced8fdc5f4e5e91.as(hex)".to_string()).unwrap();
+    let val = root.evaluate().unwrap();
+    let ret = val.get_value();
+    println!("{}", ret);
+    assert_eq!(ret, "0xe998908042a5043d06846c76bced8fdc5f4e5e91");
+
 }

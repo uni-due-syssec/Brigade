@@ -1,5 +1,5 @@
 use std::arch::x86_64::_MM_ROUND_DOWN;
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap, HashSet};
 use std::path::Path;
 use std::{fs, vec};
 use std::str::FromStr;
@@ -9,7 +9,7 @@ use serde_json::{Value, Number};
 use hex::encode;
 use sha3::digest::typenum::array;
 
-use super::error;
+use super::{error};
 
 use crate::{ChainConfig, set_var, get_var, utils};
 use crate::properties::environment::*;
@@ -28,17 +28,46 @@ pub fn struct_from_json(path_to_json: &str) -> serde_json::Value {
 pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, error::PropertyError> {
     let mut results: HashMap<String, Value> = HashMap::new();
     let properties = val.get("properties").unwrap().as_object().unwrap();
-    for (variable_name, value) in properties{
+
+    // Solve dependencies first
+    let mut dependencies: HashMap<String, HashSet<String>> = HashMap::new();
+    let possible_dependencies: Vec<&String> = properties.keys().collect();
+    for (key, value) in properties {
+        let mut deps = HashSet::new();
+        // Check if dependant
+        for (i, d) in possible_dependencies.iter().enumerate(){
+            if value.as_str().unwrap().contains(possible_dependencies[i]){
+                deps.insert(possible_dependencies[i].to_string());
+            }
+        }
+        dependencies.insert(key.clone(), deps);
+    }
+
+    // Sort properties
+    let sorted = sort_dependencies(&dependencies).unwrap();
+
+    println!("Sorted: {:?}", sorted);
+    for variable_name in sorted{
+
+    // //for (variable_name, value) in properties{
+        let value = properties.get(&variable_name).unwrap();
 
         if value.as_str().unwrap().starts_with('$'){
             //  Only Parse the variables 
-            println!("{}: {}", variable_name, value.as_str().unwrap());
-            let (_, root) = build_ast!(value.as_str().unwrap());
-            if let Ok(r) = root.evaluate() {
-                println!("Evaluated: {} to {:?}", variable_name, r);
-                set_var!(variable_name, r);
+            let v = value.as_str().unwrap();
+            println!("{}: {}", variable_name, v);
+            if let Ok(root) = crate::build_ast_root(v.to_string()){
+                match root.evaluate(){
+                    Ok(r) => {
+                        println!("Evaluated: {} to {:?}", variable_name, r);
+                        set_var!(variable_name, r);
+                    },
+                    Err(e) => {
+                        println!("Failed to evaluate: {} with reason: {:?}", variable_name, e);
+                    }
+                }
             }else{
-                println!("Failed to evaluate: {}", variable_name);
+                println!("Failed to parse: {}", variable_name);
             }
             continue;
         }
@@ -64,7 +93,26 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
         let mut f: Vec<&str> = temp.iter().map(|x| x.as_str()).collect();
         let function_name = f[0].clone();
         f.remove(0);
-        let parameter_list = f.clone();
+        let mut parameter_list = f.iter().map(|x| x.to_string()).collect::<Vec<String>>();
+
+        // for (id, p) in parameter_list.iter_mut().enumerate(){
+        //     if p.contains('$'){
+        //         if let Ok(r) = build_ast_root(p.to_string()){
+        //             match r.evaluate(){
+        //                 Ok(r) => {
+        //                     println!("Evaluated: {} to {:?}", p, r);
+        //                     *p = r.get_value();
+        //                 },
+        //                 Err(e) => {
+        //                     println!("Failed to evaluate: {} with reason: {:?}", p, e);
+        //                 }
+        //             }
+        //         }else{
+        //             println!("Failed to parse: {}", p);
+        //         }
+        //     }
+        // }
+
         // println!("Function: {}", function_name);
         // println!("Parameters: {:?}", parameter_list);
 
@@ -93,7 +141,7 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
                 
                 // $var | $var - 1 | $var.as(hex)
                 if !s.contains(")."){
-                    let (_, root) = build_ast!(s);
+                    let root = build_ast_root(s.clone()).unwrap();
                     // println!("Root: {:?}", root);
                     match root.evaluate() {
                         Ok(val) => {
@@ -108,13 +156,13 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
                     let parts: Vec<&str> = s.split(").").collect();
                     let stmt1 = &parts[0][1..];
                     // println!("Statement: {}", stmt1);
-                    let (_, root) = build_ast!(stmt1);
+                    let root = build_ast_root(stmt1.to_string()).unwrap();
                     match root.evaluate(){
                         Ok(val) => {
                             // Make Conversion
                             let st = val.get_value().to_string() + "." + parts[1];
                             // println!("Statement: {}", st);
-                            let (_, stmt2) = build_ast!(st);
+                            let stmt2 = build_ast_root(st).unwrap();
                             match stmt2.evaluate(){
                                 Ok(val) => {
                                     s = val.get_value().to_string();
@@ -132,7 +180,7 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
                     }
                 }
             }
-            params.push(s);
+            params.push(s.clone());
         }
 
         let mut counter = 0;
@@ -215,6 +263,9 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
             return Err(error::PropertyError::FieldNotFound);
         }
     }
+
+    println!("Variables: {:?}", get_variable_map_instance());
+
     Ok(results)
 }
 
@@ -276,6 +327,40 @@ fn test_find_by_path() {
 
 }
 
+pub fn sort_dependencies(dependencies: &HashMap<String, HashSet<String>>) -> Result<Vec<String>, error::PropertyError>{
+    let mut sorted = Vec::new();
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut marked: HashSet<String> = HashSet::new();
+
+    for item in dependencies.keys(){
+        if !visited.contains(item){
+            if !visit(item, dependencies, &mut visited, &mut marked, &mut sorted){
+                return Err(error::PropertyError::CyclicDependencies);
+            }
+        }
+    }
+    Ok(sorted)
+}
+
+fn visit(item: &String, dependencies: &HashMap<String, HashSet<String>>, visited: &mut HashSet<String>, marked: &mut HashSet<String>, sorted: &mut Vec<String>) -> bool{
+    if marked.contains(item){
+        return false;
+    }
+    if !visited.contains(item){
+        marked.insert(item.clone());
+        for dep in dependencies.get(item).unwrap_or(&HashSet::new()){
+            if !visit(dep, dependencies, visited, marked, sorted){
+                return false;
+            }
+        }
+        visited.insert(item.clone());
+        marked.remove(item);
+        sorted.push(item.clone());
+    }
+
+    true
+}
+
 /// Tokenize Function header
 pub fn tokenize_function(s: String) -> Vec<String>{
     let mut tokens: Vec<String> = Vec::new();
@@ -314,7 +399,7 @@ pub fn tokenize_function(s: String) -> Vec<String>{
 
 #[test]
 fn test_func_tokenizer(){
-    let property = "get_balance($payer_address, ($block_number.as(hex) - 1).as(hex))";
+    let property = "get_balance($payer_address, $ethereum_block_number.as(hex))";
     let tokens = tokenize_function(property.to_string());
     println!("{:?}", tokens);
 }
@@ -362,7 +447,7 @@ pub fn tokenize(s: String) -> Vec<String>{
 
 #[test]
 fn test_tokenizer(){
-    let property = "ethereum.get_balance($payer_address, ($block_number.as(u256) - 1).as(hex)).result.gas as u256";
+    let property = "ethereum.get_balance($payer_address, $ethereum_block_number.as(hex)).result";
     let tokens = tokenize(property.to_string());
     println!("{:?}", tokens);
 }

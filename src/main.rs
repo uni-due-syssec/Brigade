@@ -192,7 +192,7 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
         let processed_pattern = pattern.iter().map(|p| p.as_str().unwrap().to_string()).collect::<Vec<String>>().join(" && ");
         // println!("Pattern: {}", processed_pattern);
 
-        let (ast, root) = build_ast!(processed_pattern);
+        let root = build_ast_root(processed_pattern).unwrap();
 
         // Evaluate AST
         let val = root.evaluate().unwrap();
