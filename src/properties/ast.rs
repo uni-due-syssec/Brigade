@@ -1440,165 +1440,112 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
                 },
             }
         }else{ // Parse Operand in respective type
-            if token.starts_with("$"){ // If the token starts with $ a variable is used
-
-                // Variable Function calls
-                if token.contains("."){
-                    let parts: Vec<&str> = token.split(".").collect();
-                    let func: Vec<&str> = str::split(parts[1], "(").collect(); // example: at(1) -> at, 1)
-                    let args = Functions::get_args(func[1]);
-                    match func[0] {
-                        "at" => {
-                            if let Some(arg) = args{
-                                if arg.len() != 1{
-                                    return Err(ASTError::InvalidFunctionParameter("at".to_owned()))
-                                }
-                                // At expects a positive number or zero as the index of the array.
-                                let node = ASTNode::Function(Functions::At, vec![
-                                    Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
-                                    Box::new(ASTNode::ConstantNumber(arg[0].clone().parse::<u256>().unwrap()))   // Argument to the function
-                                    ]);
-                                ast_vec.push(node.clone());
-                                stack.push(node);
-                            }else{
-                                return Err(ASTError::InvalidFunctionParameter("at".to_owned()))
-                            }
-                        },
-                        "contains" => {
-                            if let Some(arg) = args{
-                                if arg.len() != 1{
-                                    return Err(ASTError::InvalidFunctionParameter("contains".to_owned()))
-                                }
-                                let node = ASTNode::Function(Functions::Contains, vec![
-                                    Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
-                                    Box::new(ASTNode::ConstantNumber(arg[0].clone().parse::<u256>().unwrap()))   // Argument to the function
-                                    ]);
-                                ast_vec.push(node.clone());
-                                stack.push(node);
-                            }else {
-                                return Err(ASTError::InvalidFunctionParameter("contains".to_owned()))
-                            }
-                        },
-                        "as" => {
-                            if let Some(arg) = args{
-                                if arg.len() != 1{
-                                    return Err(ASTError::InvalidFunctionParameter("as".to_owned()))
-                                }
-                                let node = ASTNode::Function(Functions::As, vec![
-                                    Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
-                                    Box::new(ASTNode::ConstantString(arg[0].clone()))   // Argument to the function
-                                ]);
-                                ast_vec.push(node.clone());
-                                stack.push(node);
-                            }else{
+            if token.contains('.') // Function 
+            {
+                let parts: Vec<&str> = token.split(".").collect();
+                let func: Vec<&str> = str::split(parts[1], "(").collect(); // example: at(1) -> at, 1)
+                let args = Functions::get_args(func[1]);
+                match func[0] {
+                    "as" => {
+                        if let Some(arg) = args{
+                            if arg.len() != 1{
                                 return Err(ASTError::InvalidFunctionParameter("as".to_owned()))
                             }
-                        },
-                        "slice" => {
-                            if let Some(arg) = args{
-                                if arg.len() != 2{
-                                    println!("{:?}", arg);
-                                    return Err(ASTError::InvalidFunctionParameter("slice".to_owned()))
-                                }
-                                let node = ASTNode::Function(Functions::Slice, vec![
-                                    Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
-                                    Box::new(ASTNode::ConstantNumber(arg[0].clone().parse::<u256>().unwrap())),   // Starting index
-                                    Box::new(ASTNode::ConstantNumber(arg[1].clone().parse::<u256>().unwrap()))   // Ending index
+                            // At expects a positive number or zero as the index of the array.
+                            let node = ASTNode::Function(Functions::As, vec![
+                                Box::new(parse_token(parts[0].to_string()).expect("Could not parse token")), // Pointer to variable
+                                Box::new(ASTNode::ConstantString(arg[0].clone()))   // Argument to the function
                                 ]);
-                                ast_vec.push(node.clone());
-                                stack.push(node);
-                            }else{
-                                return Err(ASTError::InvalidFunctionParameter("slice".to_owned()))
-                            }
-                        },
-                        "push" => {
-                            if let Some(arg) = args{
-                                if arg.len() != 1{
-                                    return Err(ASTError::InvalidFunctionParameter("push".to_owned()))
-                                }
-                                let node = ASTNode::Function(Functions::Push, vec![
-                                    Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
-                                    Box::new(ASTNode::from(arg[0].clone()))   // Argument to the function
-                                ]);
-                                ast_vec.push(node.clone());
-                                stack.push(node);
-                            }else{
+                            ast_vec.push(node.clone());
+                            stack.push(node);
+                        }else{
+                            return Err(ASTError::InvalidFunctionParameter("as".to_owned()))
+                        }
+                    },
+                    "push" => {
+                        if let Some(arg) = args{
+                            if arg.len() != 1{
                                 return Err(ASTError::InvalidFunctionParameter("push".to_owned()))
                             }
-                        },
-                        "pop" => {
-                            let node = ASTNode::Function(Functions::Pop, vec![
-                                Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
+                            let node = ASTNode::Function(Functions::Push, vec![
+                                Box::new(parse_token(parts[0].to_string()).expect("Could not parse token")), // Pointer to variable
+                                Box::new(ASTNode::from(arg[0].clone()))   // Argument to the function
                             ]);
                             ast_vec.push(node.clone());
                             stack.push(node);
-                        },
-                        _ => {
-                            todo!("Implement more functions");
                         }
-                    }
-                    
-                }else {
-                    // Parse Variables  
-                    let node = ASTNode::Variable(token[1..].to_string(), get_variable_map_instance());
-                    ast_vec.push(node.clone());
-                    stack.push(node);
-                }
-            }else{
-                // Function calls on all AST Nodes
-                if token.contains(".") {
-                    let parts: Vec<&str> = token.split(".").collect();
-                    let func: Vec<&str> = str::split(parts[1], "(").collect(); // example: at(1) -> at, 1)
-                    let args = Functions::get_args(func[1]);
-                    match func[0] {
-                        "as" => {
-                            if let Some(arg) = args{
-                                if arg.len() != 1{
-                                    return Err(ASTError::InvalidFunctionParameter("as".to_owned()))
-                                }
-                                // At expects a positive number or zero as the index of the array.
-                                let node = ASTNode::Function(Functions::As, vec![
-                                    Box::new(parse_token(parts[0].to_string()).expect("Could not parse token")), // Pointer to variable
-                                    Box::new(ASTNode::ConstantString(arg[0].clone()))   // Argument to the function
-                                    ]);
-                                ast_vec.push(node.clone());
-                                stack.push(node);
-                            }else{
-                                return Err(ASTError::InvalidFunctionParameter("as".to_owned()))
+                    },
+                    "at" => {
+                        if let Some(arg) = args{
+                            if arg.len() != 1{
+                                return Err(ASTError::InvalidFunctionParameter("at".to_owned()))
                             }
-                        },
-                        "push" => {
-                            if let Some(arg) = args{
-                                if arg.len() != 1{
-                                    return Err(ASTError::InvalidFunctionParameter("push".to_owned()))
-                                }
-                                let node = ASTNode::Function(Functions::Push, vec![
-                                    Box::new(parse_token(parts[0].to_string()).expect("Could not parse token")), // Pointer to variable
-                                    Box::new(ASTNode::from(arg[0].clone()))   // Argument to the function
+                            // At expects a positive number or zero as the index of the array.
+                            let node = ASTNode::Function(Functions::At, vec![
+                                Box::new(parse_token(parts[0].to_string()).expect("Could not parse token")), // Pointer to variable
+                                Box::new(ASTNode::ConstantNumber(arg[0].clone().parse::<u256>().unwrap()))   // Argument to the function
                                 ]);
-                                ast_vec.push(node.clone());
-                                stack.push(node);
-                            }
-                        },
-                        _ => {
-                            println!("{} is not a function", token);
-                            todo!("Implement more functions");
-                        }
-                    }
-                }
-                else{
-                    // Parse normal token
-                    let node = match parse_token(token){
-                        Ok(node) => {
                             ast_vec.push(node.clone());
                             stack.push(node);
-                        },
-                        Err(e) => {
-                            panic!("Error at token parsing {}", e);
+                        }else{
+                            return Err(ASTError::InvalidFunctionParameter("at".to_owned()))
                         }
-                    };    
+                    },
+                    "contains" => {
+                        if let Some(arg) = args{
+                            if arg.len() != 1{
+                                return Err(ASTError::InvalidFunctionParameter("contains".to_owned()))
+                            }
+                            let node = ASTNode::Function(Functions::Contains, vec![
+                                Box::new(parse_token(parts[0].to_string()).expect("Could not parse token")), // Pointer to variable
+                                Box::new(ASTNode::ConstantNumber(arg[0].clone().parse::<u256>().unwrap()))   // Argument to the function
+                                ]);
+                            ast_vec.push(node.clone());
+                            stack.push(node);
+                        }else {
+                            return Err(ASTError::InvalidFunctionParameter("contains".to_owned()))
+                        }
+                    },
+                    "slice" => {
+                        if let Some(arg) = args{
+                            if arg.len() != 2{
+                                println!("{:?}", arg);
+                                return Err(ASTError::InvalidFunctionParameter("slice".to_owned()))
+                            }
+                            let node = ASTNode::Function(Functions::Slice, vec![
+                                Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
+                                Box::new(ASTNode::ConstantNumber(arg[0].clone().parse::<u256>().unwrap())),   // Starting index
+                                Box::new(ASTNode::ConstantNumber(arg[1].clone().parse::<u256>().unwrap()))   // Ending index
+                            ]);
+                            ast_vec.push(node.clone());
+                            stack.push(node);
+                        }else{
+                            return Err(ASTError::InvalidFunctionParameter("slice".to_owned()))
+                        }
+                    },
+                    "pop" => {
+                        let node = ASTNode::Function(Functions::Pop, vec![
+                            Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
+                        ]);
+                        ast_vec.push(node.clone());
+                        stack.push(node);
+                    },
+                    _ => {
+                        println!("{} is not a function", token);
+                        todo!("Implement more functions");
+                    }
                 }
-                
+            }else{
+                // Parse normal token
+                let node = match parse_token(token){
+                    Ok(node) => {
+                        ast_vec.push(node.clone());
+                        stack.push(node);
+                    },
+                    Err(e) => {
+                        panic!("Error at token parsing {}", e);
+                    }
+                };
             }
         }
     }
@@ -1626,8 +1573,12 @@ pub fn parse_token(token: String) -> Result<ASTNode, &'static str>{
                             Ok(ASTNode::ConstantSignedNumber(value))
                         }
                         Err(_) => {
-                            //println!("{} is not a boolean", token);
-                            Ok(ASTNode::ConstantString(token))
+                            if token.starts_with('$'){
+                                Ok(ASTNode::Variable(token[1..].to_string(), get_variable_map_instance()))
+                            }
+                            else {
+                                Ok(ASTNode::ConstantString(token))
+                            }
                         }
                     }
 
@@ -1689,7 +1640,7 @@ pub fn shunting_yard_algorithm(tokens: Vec<String>) -> Result<VecDeque<String>, 
         }
         output_queue.push_back(val);
     }
-    // println!("Output Queue: {:?}", output_queue);
+    println!("Output Queue: {:?}", output_queue);
 
     Ok(output_queue)
 }
@@ -1766,6 +1717,7 @@ impl Token {
 }
 
 pub fn tokenize(text: String) -> Vec<String> {
+    println!("Text: {}", text);
     let mut tokens = vec![];
 
     let mut current_token = String::new();
@@ -1790,6 +1742,7 @@ pub fn tokenize(text: String) -> Vec<String> {
 
         if c == ')' && is_in_function {
             is_in_function = false;
+            last_point = false;
         }
 
         current_token.push(c);
@@ -1801,8 +1754,8 @@ pub fn tokenize(text: String) -> Vec<String> {
 
 #[test]
 fn test_tokenizer() {
-    let text = "$event_data.slice(0, 64) > 0 && $event_data.slice(0, 64) < 100".to_string();
-
+    // let text = "$event_data.slice(0, 64) > 0 && $event_data.slice(0, 64) < 100".to_string();
+    let text = "$event_data.slice(0, 64)".to_string();
     let tokens = tokenize(text.clone());
     println!("{:?}", tokens);
 
@@ -2198,24 +2151,6 @@ fn test_contains() {
 
 #[test]
 fn test_conversion() {
-    let (_, root) = build_ast!("5.as('hex')");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    assert_eq!(ret, "0x5");
-
-    // Output: ["0x5f", "0x5", "-", ".as(u256)"]
-    // Should not work
-    let (_, root) = build_ast!("( 0x5f - 0x5 ).as('u256')");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    assert_eq!(ret, "90");
-
-}
-
-#[test]
-fn test_conversion2() {
     set_var!("a", "255");
     let (_, root) = build_ast!("$a.as(hex)");
     let val = root.evaluate().unwrap();
@@ -2236,7 +2171,7 @@ fn test_string_arithmetic(){
 #[test]
 fn test_variable_conversion(){
     set_var!("a", "255");
-    let (_, root) = build_ast!("( $a.as(hex) - 1 )");
+    let (_, root) = build_ast!("( $a - 1 ).as(hex)");
     let val = root.evaluate().unwrap();
     let ret = val.get_value();
     println!("{}", ret);

@@ -32,11 +32,10 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
 
         if value.as_str().unwrap().starts_with('$'){
             //  Only Parse the variables 
-            // println!("Variable: {}", variable_name);
             println!("{}: {}", variable_name, value.as_str().unwrap());
             let (_, root) = build_ast!(value.as_str().unwrap());
             if let Ok(r) = root.evaluate() {
-                // println!("Evaluated: {}", variable_name);
+                println!("Evaluated: {} to {:?}", variable_name, r);
                 set_var!(variable_name, r);
             }else{
                 println!("Failed to evaluate: {}", variable_name);
