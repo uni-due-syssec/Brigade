@@ -38,7 +38,7 @@ impl DefinitionParser{
         // Join strings into a single string for parsing the tree
         let pattern = def_file.pattern.join(" && ");
 
-        let (ast, root) = build_ast!(pattern);
+        let (ast, root) = build_ast(pattern.as_str()).unwrap();
         Ok(Self{
             abstract_syntax_tree: ast,
             root: root,

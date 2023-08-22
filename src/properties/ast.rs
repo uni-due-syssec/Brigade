@@ -1,16 +1,15 @@
 use core::panic;
+use std::boxed;
 use std::collections::VecDeque;
-use std::fmt::format;
 
 use crate::{get_var, set_var, utils};
 
-use super::error::{self, ASTError};
+use super::error::ASTError;
 
 use super::environment::{get_variable, VariableMap, get_variable_map_instance, VarValues, GetVar};
 use std::str::FromStr;
 use ethnum::{u256, i256, AsU256};
-use regex::Regex;
-use sha3::digest::typenum::U124;
+use sha3::Digest;
 
 /// This file describes an Abstract Syntax Tree which should contain as leaves constants and the branches refer to logical or arithmetic operators.
 /// The AST consists of Nodes see ASTNode struct
@@ -128,6 +127,7 @@ pub enum Functions{
     Slice, // Slice Strings and return a String with character from to slice(start inclusive, end exclusive)
     Push, // Push value to the end of the keystore
     Pop, // Pop value from the end of the keystore
+    Keccak256, // Keccak256 Hash
 }
 
 impl Functions{
@@ -139,6 +139,7 @@ impl Functions{
             Functions::Slice => "slice",
             Functions::Push => "push",
             Functions::Pop => "pop",
+            Functions::Keccak256 => "keccak256",
         }
     }
 
@@ -150,6 +151,7 @@ impl Functions{
             "slice" => Ok(Functions::Slice),
             "push" => Ok(Functions::Push),
             "pop" => Ok(Functions::Pop),
+            "keccak256" => Ok(Functions::Keccak256),
             _ => Err(ASTError::InvalidFunction(string.to_owned())),
         }
     }
@@ -175,10 +177,7 @@ pub enum ASTNode {
     ConstantSignedNumber(i256),
     ConstantString(String),
     Array(Vec<Box<ASTNode>>),
-    // arr.foreach() 
-    // arr.contains()
-    // arr[0] as ASTNode 
-    
+
     // Variable
     Variable(String, &'static VariableMap), // String points to a variable on the VariableMap
     
@@ -292,7 +291,7 @@ impl ASTConstant{
                         if v.starts_with("0x"){
                             Ok(ASTConstant::String(v.to_string()))
                         }else{
-                            // TODO: Add the prefix to already correct hex_strings. Check if correct hex number
+                            // Add the prefix to already correct hex_strings. Check if correct hex number
                             match u256::from_str_radix(v, 16){
                                 Ok(v) => Ok(ASTConstant::String(format!("0x{:x}", v))),
                                 Err(e) =>Err(ASTError::InvalidConversion(v.to_string(), "hex".to_string()))
@@ -360,6 +359,59 @@ impl ASTConstant{
 }
 
 impl ASTNode {
+
+    pub fn print(&self, prefix: &str) {
+        match self {
+            ASTNode::ConstantBool(b) => println!("{}└── Bool: {}", prefix, b),
+            ASTNode::ConstantNumber(n) => println!("{}└── Number: {}", prefix, n),
+            ASTNode::ConstantSignedNumber(n) => println!("{}└── SignedNumber: {}", prefix, n),
+            ASTNode::ConstantString(s) => println!("{}└── String: {}", prefix, s),
+            ASTNode::Array(arr) => {
+                println!("{}└── Array:", prefix);
+                let last = arr.len() - 1;
+                for (i, v) in arr.iter().enumerate() {
+                    let new_prefix = if i == last { "   " } else { "│  " };
+                    // println!("{}{}", prefix, new_prefix);
+                    v.print(&format!("{}{}", prefix, new_prefix));
+                }
+            },
+            ASTNode::Variable(name, _) =>{
+                if let Some(v) = get_var!(name){
+                    println!("{}└── Variable: {}", prefix, v.get_value())
+                }else{
+                    println!("{}└── Variable: {}", prefix, name)
+                }
+            },
+            ASTNode::UnaryArithmetic(operator, value) => {
+                println!("{}└── Arithmetic: {}", prefix, operator.to_string());
+                value.print(&format!("{}    ", prefix));
+            },
+            ASTNode::BinaryArithmetic(operator, left, right) => {
+                println!("{}└── Arithmetic: {}", prefix, operator.to_string());
+                left.print(&format!("{}│   ", prefix));
+                right.print(&format!("{}    ", prefix));
+            },
+            ASTNode::UnaryLogic(operator, value) => {
+                println!("{}└── Logic: {}", prefix, operator.to_string());
+                value.print(&format!("{}    ", prefix));
+            },
+            ASTNode::BinaryLogic(operator, left, right) => {
+                println!("{}└── Logic: {}", prefix, operator.to_string());
+                left.print(&format!("{}│   ", prefix));
+                right.print(&format!("{}    ", prefix));
+            },
+            ASTNode::Function(func, args) => {
+                println!("{}└── Function: {}", prefix, func.to_string());
+                let last = args.len() - 1;
+                for (i, arg) in args.iter().enumerate() {
+                    let new_prefix = if i == last { "   " } else { "│  " };
+                    //println!("{}{}", prefix, new_prefix);
+                    arg.print(&format!("{}{}", prefix, new_prefix));
+                }
+            }
+        }
+    }
+
     pub fn evaluate(&self) -> Result<ASTConstant, ASTError> {
         match self {
             ASTNode::ConstantBool(value) => Ok(ASTConstant::Bool(*value)),
@@ -820,6 +872,14 @@ impl ASTNode {
                                     _ => Err(ASTError::InvalidBinaryOperator),
                                 }
                             },
+                            ASTConstant::Number(_) | ASTConstant::String(_) | ASTConstant::SignedNumber(_)=> {
+                                match operator {
+                                    LogicOperator::And => Ok(ASTConstant::Bool(left)),
+                                    LogicOperator::Or => Ok(ASTConstant::Bool(left)),
+                                    _ => Err(ASTError::InvalidBinaryOperator),
+                                    
+                                }
+                            }
                             _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
                         }
                     },
@@ -1160,7 +1220,6 @@ impl ASTNode {
                         match me {
                             ASTConstant::Array(arr) => {
                                 if let ASTNode::Variable(name, map) = *node {
-                                    println!("Variable name: {}", name);
                                     if let Some(a) = get_var!(&name){
                                         match a{
                                             VarValues::Array(mut inner) => {
@@ -1263,6 +1322,20 @@ impl ASTNode {
                             _ => Err(ASTError::InvalidFunctionInvocation("pop".to_owned())),
                         }
                     },
+                    Functions::Keccak256 => {
+                        let evalled_args = args.iter().map(|x| x.evaluate().unwrap()).collect::<Vec<ASTConstant>>();
+
+                        let serialized_values = encode_packed(&evalled_args).unwrap();
+
+                        let concatenated_bytes = serialized_values.as_slice();
+
+                        let mut hasher = sha3::Keccak256::digest(concatenated_bytes).to_vec();
+                        let hex_string = hasher.iter().map(|&num| format!("{:02x}",num)).collect::<Vec<String>>().join("");
+                        let s = "0x".to_string() + &hex_string;
+                        println!("Keccak256: {}", s);
+                        Ok(ASTConstant::String(s))
+
+                    }
                 }
             },
             ASTNode::Array(val) => {
@@ -1322,7 +1395,17 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
     let mut ast_vec: Vec<ASTNode> = vec![];
     let mut stack: Vec<ASTNode> = vec![];
 
-    for token in tokens {
+    // Array Helper
+    let mut arr: Vec<Box<ASTNode>> = vec![];
+    let mut is_array = false;
+
+
+    let mut skip_next = 0;
+    for (id, token) in tokens.iter().enumerate() {
+        if skip_next > 0 { // Skip already used tokens from functions
+            skip_next -= 1;
+            continue;
+        }
         if is_operator(token.as_str()) {
             match ArithmeticOperator::from_str(token.as_str()) {
                 Ok(value) => {
@@ -1444,104 +1527,110 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
                 },
             }
         }else{ // Parse Operand in respective type
-            if token.contains('.') // Function 
-            {
-                let parts: Vec<&str> = token.split(".").collect();
-                let func: Vec<&str> = str::split(parts[1], "(").collect(); // example: at(1) -> at, 1)
-                let args = Functions::get_args(func[1]);
-                match func[0] {
-                    "as" => {
-                        if let Some(arg) = args{
-                            if arg.len() != 1{
-                                return Err(ASTError::InvalidFunctionParameter("as".to_owned()))
-                            }
-                            // At expects a positive number or zero as the index of the array.
-                            let node = ASTNode::Function(Functions::As, vec![
-                                Box::new(parse_token(parts[0].to_string()).expect("Could not parse token")), // Pointer to variable
-                                Box::new(ASTNode::ConstantString(arg[0].clone()))   // Argument to the function
-                                ]);
-                            ast_vec.push(node.clone());
-                            stack.push(node);
-                        }else{
-                            return Err(ASTError::InvalidFunctionParameter("as".to_owned()))
-                        }
-                    },
-                    "push" => {
-                        if let Some(arg) = args{
-                            if arg.len() != 1{
-                                return Err(ASTError::InvalidFunctionParameter("push".to_owned()))
-                            }
-                            let node = ASTNode::Function(Functions::Push, vec![
-                                Box::new(parse_token(parts[0].to_string()).expect("Could not parse token")), // Pointer to variable
-                                Box::new(ASTNode::from(arg[0].clone()))   // Argument to the function
-                            ]);
-                            ast_vec.push(node.clone());
-                            stack.push(node);
-                        }
-                    },
-                    "at" => {
-                        if let Some(arg) = args{
-                            if arg.len() != 1{
-                                return Err(ASTError::InvalidFunctionParameter("at".to_owned()))
-                            }
-                            // At expects a positive number or zero as the index of the array.
-                            let node = ASTNode::Function(Functions::At, vec![
-                                Box::new(parse_token(parts[0].to_string()).expect("Could not parse token")), // Pointer to variable
-                                Box::new(ASTNode::ConstantNumber(arg[0].clone().parse::<u256>().unwrap()))   // Argument to the function
-                                ]);
-                            ast_vec.push(node.clone());
-                            stack.push(node);
-                        }else{
-                            return Err(ASTError::InvalidFunctionParameter("at".to_owned()))
-                        }
-                    },
-                    "contains" => {
-                        if let Some(arg) = args{
-                            if arg.len() != 1{
-                                return Err(ASTError::InvalidFunctionParameter("contains".to_owned()))
-                            }
-                            let node = ASTNode::Function(Functions::Contains, vec![
-                                Box::new(parse_token(parts[0].to_string()).expect("Could not parse token")), // Pointer to variable
-                                Box::new(ASTNode::ConstantNumber(arg[0].clone().parse::<u256>().unwrap()))   // Argument to the function
-                                ]);
-                            ast_vec.push(node.clone());
-                            stack.push(node);
-                        }else {
-                            return Err(ASTError::InvalidFunctionParameter("contains".to_owned()))
-                        }
-                    },
-                    "slice" => {
-                        if let Some(arg) = args{
-                            if arg.len() != 2{
-                                println!("{:?}", arg);
-                                return Err(ASTError::InvalidFunctionParameter("slice".to_owned()))
-                            }
-                            let node = ASTNode::Function(Functions::Slice, vec![
-                                Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
-                                Box::new(ASTNode::ConstantNumber(arg[0].clone().parse::<u256>().unwrap())),   // Starting index
-                                Box::new(ASTNode::ConstantNumber(arg[1].clone().parse::<u256>().unwrap()))   // Ending index
-                            ]);
-                            ast_vec.push(node.clone());
-                            stack.push(node);
-                        }else{
-                            return Err(ASTError::InvalidFunctionParameter("slice".to_owned()))
-                        }
-                    },
-                    "pop" => {
-                        let node = ASTNode::Function(Functions::Pop, vec![
-                            Box::new(ASTNode::Variable(parts[0][1..].to_string(), get_variable_map_instance())), // Pointer to variable
-                        ]);
+
+            if let Ok(func) = Functions::from_str(token.as_str()){
+                // Parse Functions
+                match func {
+                    Functions::As => {
+                        // As takes just one argument and the preceeding token
+                        let args = tokens[id+1].clone();
+                        skip_next += 1; // Skip next token
+                        let me = stack.pop().unwrap_or(ASTNode::ConstantString("".to_owned()));
+                        let node = ASTNode::Function(Functions::As, vec![ Box::new(me) ,Box::new(ASTNode::ConstantString(args))]);
+                        ast_vec.push(node.clone());
+                        stack.push(node);
+                    }
+                    Functions::Contains => {
+                        // Contains takes one argument and the preceeding token
+                        let args = tokens[id+1].clone();
+                        skip_next += 1; // Skip next token
+                        let me = stack.pop().unwrap_or(ASTNode::ConstantString("".to_owned()));
+                        let node = ASTNode::Function(Functions::Contains, vec![ Box::new(me) ,Box::new(ASTNode::ConstantString(args))]);
                         ast_vec.push(node.clone());
                         stack.push(node);
                     },
-                    _ => {
-                        println!("{} is not a function", token);
-                        todo!("Implement more functions");
-                    }
+                    Functions::At => {
+                        // At takes one argument and the preceeding token
+                        let args = tokens[id+1].clone();
+                        skip_next += 1; // Skip next token
+                        let me = stack.pop().unwrap_or(ASTNode::ConstantString("".to_owned()));
+                        let node = ASTNode::Function(Functions::At, vec![ Box::new(me) ,Box::new(ASTNode::ConstantString(args))]);
+                        ast_vec.push(node.clone());
+                        stack.push(node);
+                    },
+                    Functions::Slice => {
+                        // Slice takes two arguments and the preceeding token
+                        let args = tokens[id+1].clone();
+                        let args2 = tokens[id+2].clone();
+                        skip_next += 2;
+                        let me = stack.pop().unwrap_or(ASTNode::ConstantString("".to_owned()));
+                        let node = ASTNode::Function(Functions::Slice, vec![ Box::new(me) ,Box::new(ASTNode::ConstantString(args)), Box::new(ASTNode::ConstantString(args2))]);
+                        ast_vec.push(node.clone());
+                        stack.push(node);
+
+                    },
+                    Functions::Push => {
+                        // Push takes one argument and the preceeding token
+                        let args = tokens[id+1].clone();
+                        skip_next += 1;
+                        let me = stack.pop().unwrap_or(ASTNode::ConstantString("".to_owned()));
+                        let parsed_arg = parse_token(args.clone()).unwrap_or(ASTNode::ConstantString(args));
+                        let node = ASTNode::Function(Functions::Push, vec![ Box::new(me) ,Box::new(parsed_arg)]);
+                        ast_vec.push(node.clone());
+                        stack.push(node);
+                    },
+                    Functions::Pop => {
+                        // Pop takes no arguments and the preceeding token
+                        let me = stack.pop().unwrap_or(ASTNode::ConstantString("".to_owned()));
+                        let node = ASTNode::Function(Functions::Pop, vec![ Box::new(me)]);
+                        ast_vec.push(node.clone());
+                        stack.push(node);
+                    },
+                    Functions::Keccak256 => {
+                        // Keccak256 takes arbitrary arguments 
+                        // The first argument indicates the length of arguments supplied
+                        let number_of_args = &tokens[id+1].clone().parse::<u64>().unwrap_or(0);
+                        skip_next += 1;
+
+                        // Get the arguments
+                        let mut args = vec![];
+                        for i in 0..*number_of_args as usize {
+                            args.push(tokens[id+i+2].clone());
+                        }
+                        skip_next += *number_of_args;
+                        let ast_args = args.iter().map(|x| parse_token(x.clone()).unwrap()).collect::<Vec<ASTNode>>();
+                        let mut boxed_args = ast_args.iter().map(|x| Box::new(x.clone())).collect::<Vec<Box<ASTNode>>>();
+                        let node = ASTNode::Function(Functions::Keccak256, boxed_args);
+                        ast_vec.push(node.clone());
+                        stack.push(node);
+                    },
                 }
             }else{
+
+                // Parse array
+                if token.starts_with('['){
+                    is_array = true;
+                    continue;
+                }
+
+                if token.ends_with(']'){
+                    is_array = false;
+                    // Push Array on stack
+                    stack.push(ASTNode::Array(arr.clone()));
+                    ast_vec.push(ASTNode::Array(arr.clone()));
+                    arr.clear();
+                    continue;
+                }
+
+                if is_array {
+                    // Append to array
+                    let parsed_token = parse_token(token.clone()).unwrap();
+                    arr.push(Box::new(parsed_token));
+                    continue;
+                }
+
                 // Parse normal token
-                let node = match parse_token(token){
+                let node = match parse_token(token.clone()){
                     Ok(node) => {
                         ast_vec.push(node.clone());
                         stack.push(node);
@@ -1682,84 +1771,134 @@ fn is_function(token: &str) -> Option<Functions>{
     }
 }
 
-#[derive(Debug, Clone)]
-enum Token{
-    Number(f64),
-    Word(String),
-    Bool(bool),
-    Operator(String),
-    Params(Box<Token>),
-    Function(Functions),
-    Variable(String),
-}
+// #[derive(Debug, Clone)]
+// pub enum Token{
+//     Word(String),
+//     Function(String),
+// }
 
-impl Token {
-    fn to_string(&self) -> String{
-        match self {
-            Token::Number(value) => format!("{}", value),
-            Token::Word(value) => format!("{}", value),
-            Token::Bool(value) => format!("{}", value),
-            Token::Operator(value) => format!("{}", value),
-            Token::Params(value) => format!("{:?}", value),
-            Token::Function(value) => format!("{:?}", value),
-            Token::Variable(value) => format!("{}", value),
-        }
-    }
+// impl Token {
+//     pub fn is_empty(&self) -> bool{
+//         match self {
+//             Token::Word(w) => {
+//                 w.is_empty()
+//             },
+//             Token::Function(f) => {
+//                 f.is_empty()
+//             }
+//         }
+//     }
+// }
 
-    fn from_str(token_type: &str, string: &str) -> Result<Self, &'static str>{
-        match token_type {
-            "NUMBER" => Ok(Token::Number(string.parse::<f64>().unwrap())),
-            "BOOL" => Ok(Token::Bool(string.parse::<bool>().unwrap())),
-            "OPERATOR" => Ok(Token::Operator(string.to_string())),
-            "WORD" => Ok(Token::Word(string.to_string())),
-            "FUNCTION" => Ok(Token::Function(is_function(string).unwrap())),
-            "VAR" => Ok(Token::Variable(string.to_string())),
-            "PARAMS" => Ok(Token::Params(Box::new(Token::from_str("PARAMS", string).unwrap()))),
-            _ => Err("Invalid Token"),
-        }
-    }
-}
+// pub fn tokenize(text: String) -> Vec<Token> {
+//     let mut tokens: Vec<Token> = vec![];
+
+//     let mut current_token = String::new();
+//     let mut state = false; // false is outside function true is inside function
+
+//     for c in text.chars(){
+//         match c {
+//             ' ' => {
+//                 if !current_token.is_empty() {
+//                     tokens.push(Token::Word(current_token.clone()));
+//                     current_token.clear();
+//                 }
+//             },
+//             '(' => {
+//                 if let Ok(_) = Functions::from_str(&current_token.clone()[1..].to_string()){
+//                     println!("{} is a function", current_token.clone());
+//                     state = true;
+//                     tokens.push(Token::Function(current_token.clone()));
+//                 }else{
+//                     tokens.push(Token::Word(current_token.clone()));
+//                 }
+//                 current_token.clear();
+//                 current_token.push(c);
+//                 tokens.push(Token::Word(current_token.clone()));
+//                 current_token.clear();
+//             },
+//             ')' => {
+//                 if state {
+//                     state = false;
+//                 }
+//                 tokens.push(Token::Word(current_token.clone()));
+//                 current_token.push(c);
+//                 tokens.push(Token::Word(current_token.clone()));
+//                 current_token.clear();
+//             },
+//             _ => {
+//                 current_token.push(c);
+//             }
+//         }
+//     }
+
+//     if !current_token.is_empty() {
+//         tokens.push(Token::Word(current_token.clone()));
+//     }
+
+//         // Remove empty tokens
+//         tokens.retain(|x| !x.is_empty());
+
+//     tokens
+// }
 
 pub fn tokenize(text: String) -> Vec<String> {
-    let mut tokens = vec![];
+    let mut tokens: Vec<String> = vec![];
 
     let mut current_token = String::new();
-    let mut is_in_function = 0;
-    let mut last_point = false;
+    let mut state = false; // false is outside function true is inside function
+
+    let mut is_array = false;
     for c in text.chars(){
-        if c.is_whitespace() && is_in_function == 0 {
-            tokens.push(current_token);
-            current_token = String::new();
-            last_point = false;
-
-            continue;
-        }
-
-        if c == '.' {
-            last_point = true;
-        }
-
-        if c == '(' && last_point {
-            is_in_function += 1;
-        }
-
-        if c == ')' && is_in_function > 0 {
-            is_in_function -= 1;
-            
-            if is_in_function == 0 {
-                last_point = false;    
+        match c {
+            ' ' | ',' | '.' => {
+                if !current_token.is_empty() && !is_array {
+                    tokens.push(current_token.clone());
+                    current_token.clear();
+                }
+            },
+            '(' => {
+                if state == false {
+                    if let Ok(_) = Functions::from_str(&current_token.clone()){
+                        state = true;
+                        tokens.push(current_token.clone());
+                    }else{
+                        tokens.push(current_token.clone());
+                    }
+                    current_token.clear();
+                }
+                current_token.push(c);
+                tokens.push(current_token.clone());
+                current_token.clear();
+            },
+            ')' => {
+                if state {
+                    state = false;
+                    tokens.push(current_token.clone());
+                    current_token.clear();
+                }
+                current_token.push(c);
+                tokens.push(current_token.clone());
+                current_token.clear();
+            },
+            _ => {
+                current_token.push(c);
             }
         }
-
-        current_token.push(c);
     }
-    tokens.push(current_token);
+
+    if !current_token.is_empty() {
+        tokens.push(current_token.clone());
+    }
+
+    tokens.retain(|x| !x.is_empty());
+
     tokens
 }
 
 /// Build an AST and return the root node
-pub fn build_ast_root(text: String) -> Result<ASTNode, &'static str>{
-    let tokens = tokenize(text);
+pub fn build_ast_root(text: &str) -> Result<ASTNode, &'static str>{
+    let tokens = tokenize(text.to_string());
     if let Ok(postfix) = shunting_yard_algorithm(tokens){
         if let Ok((_, root)) = parse_postfix(postfix){
             Ok(root)
@@ -1771,496 +1910,609 @@ pub fn build_ast_root(text: String) -> Result<ASTNode, &'static str>{
     }
 }
 
-#[test]
-fn test_tokenizer() {
-    // let text = "$event_data.slice(0, 64) > 0 && $event_data.slice(0, 64) < 100".to_string();
-    let text = "ethereum.get_balance($payer_address, $ethereum_block_number.as(hex)).result".to_string();
-    let tokens = tokenize(text.clone());
-    println!("{:?}", tokens);
-
-    let test = text.split(" ").map(|s| s.to_string()).collect::<Vec<String>>();
-    println!("{:?}", test);
-}
-
-/// This macro builds an AST from a string
-/// The input is a string with the infix notation separated by spaces
-/// The return type is a tuple with the first entry being the full AST and the second entry being the root node
-#[macro_export]
-macro_rules! build_ast {
-    ($str_pattern:expr) => {
-        match parse_postfix(shunting_yard_algorithm(tokenize($str_pattern.to_string())).unwrap()){
-            Ok((ast, root)) => {
-                (ast, root)
-            },
-            Err(e) => {
-                panic!("{}", e);
-            }
+pub fn build_ast(text: &str) -> Result<(Vec<ASTNode>, ASTNode), &'static str>{
+    let tokens = tokenize(text.to_string());
+    if let Ok(postfix) = shunting_yard_algorithm(tokens){
+        if let Ok((ast, root)) = parse_postfix(postfix){
+            Ok((ast, root))
+        }else{
+            Err("Invalid AST")
         }
-    };
+    }else{
+        Err("Invalid AST")
+    }
 }
 
-
-#[test]
-fn test_ast(){
-    // Example: 5 + 5 > 17 - 15
-
-    let exp_a = ASTNode::ConstantNumber(5.as_u256());
-    let exp_b = ASTNode::ConstantNumber(5.as_u256());
-    let exp_a_b = ASTNode::BinaryArithmetic(ArithmeticOperator::Add, Box::new(exp_a), Box::new(exp_b));
-
-    let exp_c = ASTNode::ConstantNumber(17.as_u256());
-    let exp_d = ASTNode::ConstantNumber(15.as_u256());
-    let exp_c_d = ASTNode::BinaryArithmetic(ArithmeticOperator::Subtract, Box::new(exp_c), Box::new(exp_d));
-
-    let exp_g = ASTNode::BinaryLogic(LogicOperator::Greater, Box::new(exp_a_b), Box::new(exp_c_d));
-    
-    let val = exp_g.evaluate().unwrap();
-    let(const_type, value) = val.get_constant_info();
-    println!("{}: {}", const_type, value);
-
-    assert_eq!(value, "true");
-}
-
-#[test]
-fn test_ast_macro(){
-    let (ast, root) = build_ast!("5 == 5");
-
-    let val = root.evaluate().unwrap();
-    let(const_type, value) = val.get_constant_info();
-    println!("{}: {}", const_type, value);
-}
-
-#[test]
-fn test_shunting_yard(){
-    // 5 + 5 > 17 - (5 - neg 10)
-    let tokens = vec!["5".to_owned(), "+".to_owned(), "5".to_owned(), ">".to_owned(), "17".to_owned(), "-".to_owned(), "(".to_owned(), "5".to_owned(), "-".to_owned(), "neg".to_owned(), "10".to_owned(), ")".to_owned()];
-
-    //let tokens: Vec<String> = vec!["5".to_owned(), ">".to_owned(), "(".to_owned(), "6".to_owned(), "+".to_owned(), "5".to_owned(), ")".to_owned()];
-
-    let output = shunting_yard_algorithm(tokens);
-    let output = output.unwrap();
-    println!("Output: {:?}", output);
-    for o in output.iter(){
-        print!("{}", o);
+pub fn encode_packed(tokens: &Vec<ASTConstant>) -> Option<Vec<u8>> {
+    let mut max = 0;
+    for token in tokens {
+        max += max_encoded_length(token);
     }
     
-    let (ast, root) = parse_postfix(output).unwrap();
-
-    println!("Root: {}", root.format());
-
-    let val = root.evaluate().unwrap();
-    let (const_type, value) = val.get_constant_info();
-
-    assert_eq!(value, "true");
+    // Encode
+    let mut b = Vec::with_capacity(max);
+    for token in tokens {
+        encode_token(token, &mut b, false);
+    }
+    Some(b)
 }
 
-#[test]
-fn test_all_operations(){
-    // Greater
-    let (ast, root) = build_ast!("5 > 4");
-
-    let val = root.evaluate().unwrap();
-    let(const_type, value) = val.get_constant_info();
-    println!("Greater: {}: {}", const_type, value);
-    assert_eq!(const_type, "Bool");
-    assert_eq!(value, "true");
-
-    // Less
-    let (ast, root) = build_ast!("3 < 4");
-
-    let val = root.evaluate().unwrap();
-    let(const_type, value) = val.get_constant_info();
-    println!("Less: {}: {}", const_type, value);
-    assert_eq!(const_type, "Bool");
-    assert_eq!(value, "true");
-
-    // GreaterOrEqual
-    let (ast, root) = build_ast!("5 >= 4");
-
-    let val = root.evaluate().unwrap();
-    let(const_type, value) = val.get_constant_info();
-    println!("GreaterOrEqual: {}: {}", const_type, value);
-    assert_eq!(const_type, "Bool");
-    assert_eq!(value, "true");
-
-    // LessOrEqual
-    let (ast, root) = build_ast!("4 <= 4");
-
-    let val = root.evaluate().unwrap();
-    let(const_type, value) = val.get_constant_info();
-    println!("LessOrEqual: {}: {}", const_type, value);
-    assert_eq!(const_type, "Bool");
-    assert_eq!(value, "true");
-
-    // Equal
-    let (ast, root) = build_ast!("5 == 5");
-
-    let val = root.evaluate().unwrap();
-    let(const_type, value) = val.get_constant_info();
-    println!("Equal: {}: {}", const_type, value);
-    assert_eq!(const_type, "Bool");
-    assert_eq!(value, "true");
-
-    // NotEqual
-    let (ast, root) = build_ast!("5 != 5");
-
-    let val = root.evaluate().unwrap();
-    let(const_type, value) = val.get_constant_info();
-    println!("NotEqual: {}: {}", const_type, value);
-    assert_eq!(const_type, "Bool");
-    assert_eq!(value, "false");
-
-    // Not
-    let (ast, root) = build_ast!("! true");
-    
-    let val = root.evaluate().unwrap();
-    let(const_type, value) = val.get_constant_info();
-    println!("Not: {}: {}", const_type, value);
-    assert_eq!(const_type, "Bool");
-    assert_eq!(value, "false");
-
-    // Add
-    let (ast, root) = build_ast!("5 + 5");
-
-    let val = root.evaluate().unwrap();
-    let(const_type, value) = val.get_constant_info();
-    println!("Add: {}: {}", const_type, value);
-    assert_eq!(const_type, "Number");
-    assert_eq!(value, "10");
-
-    // Subtract
-    let (ast, root) = build_ast!("5 - 5");
-
-    let val = root.evaluate().unwrap();
-    let(const_type, value) = val.get_constant_info();
-    println!("Subtract: {}: {}", const_type, value);
-    assert_eq!(const_type, "Number");
-    assert_eq!(value, "0");
-
-    // Multiply
-    let (ast, root) = build_ast!("5 * 5");
-
-    let val = root.evaluate().unwrap();
-    let(const_type, value) = val.get_constant_info();
-    println!("Multiply: {}: {}", const_type, value);
-    assert_eq!(const_type, "Number");
-    assert_eq!(value, "25");
-
-    // Divide
-    let (ast, root) = build_ast!("5 / 5");
-
-    let val = root.evaluate().unwrap();
-    let(const_type, value) = val.get_constant_info();
-    println!("Divide: {}: {}", const_type, value);
-    assert_eq!(const_type, "Number");
-    assert_eq!(value, "1");
-
-    // Modulo
-    let (ast, root) = build_ast!("5 % 5");
-
-    let val = root.evaluate().unwrap();
-    let(const_type, value) = val.get_constant_info();
-    println!("Modulo: {}: {}", const_type, value);
-    assert_eq!(const_type, "Number");
-    assert_eq!(value, "0");
-
-    // Negate
-    let (ast, root) = build_ast!("neg 5");
-
-    let val = root.evaluate().unwrap();
-    let(const_type, value) = val.get_constant_info();
-    println!("Negate: {}: {}", const_type, value);
-    assert_eq!(const_type, "SignedNumber");
-    assert_eq!(value, "-5");
-
+fn encode_token(token: &ASTConstant, out: &mut Vec<u8>, in_array: bool) {
+    match token {
+        ASTConstant::Number(n) => {
+            let buf  = n.to_be_bytes();
+            let start = if in_array { 0 } else { 32 - u256::leading_zeros(n.to_be())} as usize;
+            out.extend_from_slice(&buf[start..32]);
+        },
+        ASTConstant::SignedNumber(n) => {
+            let buf  = n.to_be_bytes();
+            let start = if in_array { 0 } else { 32 - i256::leading_zeros(n.to_be())} as usize;
+            out.extend_from_slice(&buf[start..32]);
+        },
+        ASTConstant::Bool(b) => {
+            if in_array { 
+                out.extend_from_slice(&[0;31])
+            }
+            out.push(*b as u8);
+        },
+        ASTConstant::String(s) => {
+            if s.starts_with("0x") && s.len() == 42 { // Address
+                if in_array {
+                    out.extend_from_slice(&[0;12]);
+                }
+                out.extend_from_slice(&s.as_bytes());
+            }else{
+                out.extend_from_slice(s.as_bytes());
+            }
+        },
+        ASTConstant::Array(vec) => {
+            for t in vec {
+                encode_token(t, out, true);
+            }
+        }
+    }
 }
 
-#[test]
-fn test_complex_ast(){
-    // Test combination of Arithmetic and Logic Operators
-    let (ast, root) = build_ast!("5 + 5 > 7");
-
-
-    // 5 + 5 > 7
-    // 5 -> Output Queue [5] Stack []
-    // + -> Output Queue [5] Stack [+]
-    // 5 -> Output Queue [5, 5] Stack [+]
-    // > -> Output Queue [5, 5, +] Stack [>]
-    // 7 -> Output Queue [5, 5, +, 7] Stack [>]
-    // [5, 5, +, 7, >]
-
-    // 5 + 5 > 7
-    // 5 -> Output Queue [5] Stack []
-    // + -> Output Queue [5] Stack [+]
-    // 5 -> Output Queue [5, 5] Stack [+]
-    // > -> Output Queue [5, 5] Stack [+, >]
-    // 7 -> Output Queue [5, 5, 7] Stack [+, >]
-    // [5, 5, 7, >, +]
-
-
-    let val = root.evaluate().unwrap();
-    let(const_type, value) = val.get_constant_info();
-    println!("Add Greater: {}: {}", const_type, value);
-    assert_eq!(const_type, "Bool");
-    assert_eq!(value, "true");
+fn max_encoded_length(t: &ASTConstant) -> usize {
+    match t {
+        ASTConstant::Number(_) | ASTConstant::SignedNumber(_) => {
+            32
+        },
+        ASTConstant::String(s) => {
+            if s.starts_with("0x") && s.len() == 42 { // Address
+                20
+            }else{
+                s.len()
+            }
+        },
+        ASTConstant::Bool(b) => {
+            1
+        },
+        ASTConstant::Array(vec) => vec.iter().map(|x| max_encoded_length(x).max(32)).sum()
+    }
 }
 
-#[test]
-fn test_more_complex_ast(){
-    let (ast, root) = build_ast!("( 17 * 3 ) % 10 == 1");
-
-    let val = root.evaluate().unwrap();
-    let(const_type, value) = val.get_constant_info();
-    println!("{}: {}", const_type, value);
-    assert_eq!(const_type, "Bool");
-    assert_eq!(value, "true");
-}
-
-#[test]
-fn test_variables(){
-
-    let map = get_variable_map_instance();
-    set_var!("x", "5");
-
-    let (ast, root) = build_ast!("$x == 5");
-
-    let val = root.evaluate().unwrap();
-    let (const_type, value) = val.get_constant_info();
-    println!("{}: {}", const_type, value);
-    assert_eq!(const_type, "Bool");
-    assert_eq!(value, "true");
-}
-
-#[test]
-fn test_str_var(){
-    let map = get_variable_map_instance();
-    set_var!("x", "airport");
-
-    let (ast, root) = build_ast!("$x == milestone");
-    
-    
-    set_var!("x", "milestone");
-
-    let val = root.evaluate().unwrap();
-    let (const_type, value) = val.get_constant_info();
-    println!("{}: {}", const_type, value);
-    assert_eq!(const_type, "Bool");
-    assert_eq!(value, "true");
-}
-
-#[test]
-fn test_function_at(){    
-    set_var!("arr", "[0,1,2,3]");
-
-    let (_, root) = build_ast!("$arr.at(1) != 1");
-
-    let val = root.evaluate().unwrap();
-    let v = val.get_value();
-    println!("{}", v);
-    assert_eq!(v, "false");
-
-}
-
-#[test]
-fn test_arr() {
-    set_var!("arr", "[0,1,2,3]");
-    set_var!("arr2", "[0,1,2,3]");
-    set_var!("arr3", "[0,1,2,4]");
-    set_var!("arr4", "['hello','user','a',5]");
-
-    let (_, root) = build_ast!("$arr == $arr2");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    assert_eq!(ret, "true");
-
-    let (_, root) = build_ast!("$arr != $arr3");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    assert_eq!(ret, "true");
-
-    println!("{:?}", get_var!("arr4").unwrap());
-
-}
-
-#[test]
-fn convert_values(){
-    set_var!("a", "0xff");
-
-    let (_, root) = build_ast!("$a == 255");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    assert_eq!(ret, "true");
-
-    let (_, root) = build_ast!("255 == $a");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    assert_eq!(ret, "true");
-}
-
-// #[test]
-// fn test_tokenizer(){
-//     let string = "15.0 + 5 > 17 || hallo == hallo && true";
-
-//     // String "15.0 + 5 > 17 || hallo == hallo && true || &arr.at(1) == 1"
-//     // Expected tokens: [15.0, +, 5, >, 17, ||, hallo, ==, hallo, &&, true, ||, &arr.at(1), ==, 1]
-
-//     let tokens = tokenize(string);
-
-//     println!("Tokens: {:?}", tokens);
+// /// This macro builds an AST from a string
+// /// The input is a string with the infix notation separated by spaces
+// /// The return type is a tuple with the first entry being the full AST and the second entry being the root node
+// #[macro_export]
+// macro_rules! build_ast {
+//     ($str_pattern:expr) => {
+//         match parse_postfix(shunting_yard_algorithm(tokenize($str_pattern.to_string())).unwrap()){
+//             Ok((ast, root)) => {
+//                 (ast, root)
+//             },
+//             Err(e) => {
+//                 panic!("{}", e);
+//             }
+//         }
+//     };
 // }
 
-#[test]
-fn negate_array() {
-    set_var!("arr", "[0,1,2,3]");
+#[cfg(test)]
+mod test_ast{
+    use crate::properties::ast::*;
+    
+    #[test]
+    fn test_tokenizer() {
+        // let text = "$event_data.slice(0, 64) > 0 && $event_data.slice(0, 64) < 100".to_string();
+        let text = "keccak256(10, 14,3, 17) * ( 15 + 5 ).as(hex) - 0xff".to_string();
+        let tokens = tokenize(text.clone());
+        println!("{:?}", tokens);
 
-    let (_, root) = build_ast!("neg $arr");
+        let test = text.split(" ").map(|s| s.to_string()).collect::<Vec<String>>();
+        println!("{:?}", test);
+    }
 
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    assert_eq!(ret, "[0,-1,-2,-3]");
-}
+    #[test]
+    fn test_ast(){
+        // Example: 5 + 5 > 17 - 15
 
-#[test]
-fn test_arrays() {
-    set_var!("arr", "[0,1,2,3]");
-    set_var!("arr2", "[0,1,2,3]");
-    set_var!("arr3", "[0,1,2,4]");
+        let exp_a = ASTNode::ConstantNumber(5.as_u256());
+        let exp_b = ASTNode::ConstantNumber(5.as_u256());
+        let exp_a_b = ASTNode::BinaryArithmetic(ArithmeticOperator::Add, Box::new(exp_a), Box::new(exp_b));
 
-    let (_, root) = build_ast!("$arr + 1");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    assert_eq!(ret, "[1,2,3,4]");
-    assert_eq!(get_var!(value "arr").unwrap(), "[0,1,2,3]");
+        let exp_c = ASTNode::ConstantNumber(17.as_u256());
+        let exp_d = ASTNode::ConstantNumber(15.as_u256());
+        let exp_c_d = ASTNode::BinaryArithmetic(ArithmeticOperator::Subtract, Box::new(exp_c), Box::new(exp_d));
 
-    let (_, root) = build_ast!("$arr + 5 > 4");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    assert_eq!(ret, "true");
+        let exp_g = ASTNode::BinaryLogic(LogicOperator::Greater, Box::new(exp_a_b), Box::new(exp_c_d));
+        
+        let val = exp_g.evaluate().unwrap();
+        let(const_type, value) = val.get_constant_info();
+        println!("{}: {}", const_type, value);
 
-    let (_ , root) = build_ast!("neg $arr.at(1) == 1");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    assert_eq!(ret, "false");
-}
+        assert_eq!(value, "true");
+    }
 
-#[test]
-fn test_contains() {
-    set_var!("arr", "[0,1,2,3]");
+    #[test]
+    fn test_ast_macro(){
+        let root = build_ast_root("5 == 5").unwrap();
 
-    let (_, root) = build_ast!("$arr.contains(1)");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    assert_eq!(ret, "true");
+        let val = root.evaluate().unwrap();
+        let(const_type, value) = val.get_constant_info();
+        println!("{}: {}", const_type, value);
+    }
 
-    let (_, root) = build_ast!("$arr.contains(60.0)");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    assert_eq!(ret, "false");
-}
+    #[test]
+    fn test_shunting_yard(){
+        // 5 + 5 > 17 - (5 - neg 10)
+        let tokens = vec!["keccak256", "(", "10", "14", "3", "hello", ")", "*", "(", "15", "+", "5", ")", "as", "(", "hex", ")", "-", "0xff"];
+        let tokens_str: Vec<String> = tokens.iter().map(|x| x.to_string()).collect();
+        //let tokens: Vec<String> = vec!["5".to_owned(), ">".to_owned(), "(".to_owned(), "6".to_owned(), "+".to_owned(), "5".to_owned(), ")".to_owned()];
 
-#[test]
-fn test_conversion() {
-    set_var!("a", "255");
-    let (_, root) = build_ast!("$a.as(hex)");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    assert_eq!(ret, "0xff");
-}
+        let output = shunting_yard_algorithm(tokens_str);
+        let output = output.unwrap();
+        println!("Output: {:?}", output);
+        for o in output.iter(){
+            print!("{}", o);
+        }
+        
+        let (ast, root) = parse_postfix(output).unwrap();
 
-#[test]
-fn test_string_arithmetic(){
-    let (_, root) = build_ast!("0xff.as(u256) - 1");
+        println!("Root: {}", root.format());
 
-    let val = root.evaluate().unwrap();
-    let(const_type, value) = val.get_constant_info();
-    println!("{}: {}", const_type, value);
-}
+        let val = root.evaluate().unwrap();
+        let (const_type, value) = val.get_constant_info();
 
-#[test]
-fn test_variable_conversion(){
-    set_var!("a", "255");
-    let (_, root) = build_ast!("( $a - 1 ).as(hex)");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    assert_eq!(ret, "0xff");
+        assert_eq!(value, "true");
+    }
 
-}
+    #[test]
+    fn test_all_operations(){
+        // Greater
+        let root = build_ast_root("5 > 4").unwrap();
 
-#[test]
-fn test_slices() {
-    set_var!("arr", "[0,1,2,3]");
+        let val = root.evaluate().unwrap();
+        let(const_type, value) = val.get_constant_info();
+        println!("Greater: {}: {}", const_type, value);
+        assert_eq!(const_type, "Bool");
+        assert_eq!(value, "true");
 
-    let (_, root) = build_ast!("$arr.slice(1,3)");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    assert_eq!(ret, "[1,2]");
+        // Less
+        let root = build_ast_root("3 < 4").unwrap();
 
-    set_var!("string", "hello");
-    let (_, root) = build_ast!("$string.slice(1,5)");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    assert_eq!(ret, "ello");
-}
+        let val = root.evaluate().unwrap();
+        let(const_type, value) = val.get_constant_info();
+        println!("Less: {}: {}", const_type, value);
+        assert_eq!(const_type, "Bool");
+        assert_eq!(value, "true");
 
-#[test]
-fn test_push() {
+        // GreaterOrEqual
+        let root = build_ast_root("5 >= 4").unwrap();
 
-    let(_, root) = build_ast!("hello.push(a)");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    assert_eq!(ret, "helloa");
+        let val = root.evaluate().unwrap();
+        let(const_type, value) = val.get_constant_info();
+        println!("GreaterOrEqual: {}: {}", const_type, value);
+        assert_eq!(const_type, "Bool");
+        assert_eq!(value, "true");
 
-    set_var!("some_array", "[0,1,2,3]");
+        // LessOrEqual
+        let root = build_ast_root("4 <= 4").unwrap();
 
-    let (_, root) = build_ast!("$some_array.push(5)");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    println!("{:?}", get_var!("some_array").unwrap());
-    assert_eq!(ret, "true");
+        let val = root.evaluate().unwrap();
+        let(const_type, value) = val.get_constant_info();
+        println!("LessOrEqual: {}: {}", const_type, value);
+        assert_eq!(const_type, "Bool");
+        assert_eq!(value, "true");
 
-    set_var!("num", 10);
-    let (_, root) = build_ast!("$some_array.push($num)");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    println!("{:?}", get_var!("some_array").unwrap());
-    assert_eq!(ret, "true");
+        // Equal
+        let root = build_ast_root("5 == 5").unwrap();
+
+        let val = root.evaluate().unwrap();
+        let(const_type, value) = val.get_constant_info();
+        println!("Equal: {}: {}", const_type, value);
+        assert_eq!(const_type, "Bool");
+        assert_eq!(value, "true");
+
+        // NotEqual
+        let root = build_ast_root("5 != 5").unwrap();
+
+        let val = root.evaluate().unwrap();
+        let(const_type, value) = val.get_constant_info();
+        println!("NotEqual: {}: {}", const_type, value);
+        assert_eq!(const_type, "Bool");
+        assert_eq!(value, "false");
+
+        // Not
+        let root = build_ast_root("! true").unwrap();
+        
+        let val = root.evaluate().unwrap();
+        let(const_type, value) = val.get_constant_info();
+        println!("Not: {}: {}", const_type, value);
+        assert_eq!(const_type, "Bool");
+        assert_eq!(value, "false");
+
+        // Add
+        let root = build_ast_root("5 + 5").unwrap();
+
+        let val = root.evaluate().unwrap();
+        let(const_type, value) = val.get_constant_info();
+        println!("Add: {}: {}", const_type, value);
+        assert_eq!(const_type, "Number");
+        assert_eq!(value, "10");
+
+        // Subtract
+        let root = build_ast_root("5 - 5").unwrap();
+
+        let val = root.evaluate().unwrap();
+        let(const_type, value) = val.get_constant_info();
+        println!("Subtract: {}: {}", const_type, value);
+        assert_eq!(const_type, "Number");
+        assert_eq!(value, "0");
+
+        // Multiply
+        let root = build_ast_root("5 * 5").unwrap();
+
+        let val = root.evaluate().unwrap();
+        let(const_type, value) = val.get_constant_info();
+        println!("Multiply: {}: {}", const_type, value);
+        assert_eq!(const_type, "Number");
+        assert_eq!(value, "25");
+
+        // Divide
+        let root = build_ast_root("5 / 5").unwrap();
+
+        let val = root.evaluate().unwrap();
+        let(const_type, value) = val.get_constant_info();
+        println!("Divide: {}: {}", const_type, value);
+        assert_eq!(const_type, "Number");
+        assert_eq!(value, "1");
+
+        // Modulo
+        let root = build_ast_root("5 % 5").unwrap();
+
+        let val = root.evaluate().unwrap();
+        let(const_type, value) = val.get_constant_info();
+        println!("Modulo: {}: {}", const_type, value);
+        assert_eq!(const_type, "Number");
+        assert_eq!(value, "0");
+
+        // Negate
+        let root = build_ast_root("neg 5").unwrap();
+
+        let val = root.evaluate().unwrap();
+        let(const_type, value) = val.get_constant_info();
+        println!("Negate: {}: {}", const_type, value);
+        assert_eq!(const_type, "SignedNumber");
+        assert_eq!(value, "-5");
+
+    }
+
+    #[test]
+    fn test_complex_ast(){
+        // Test combination of Arithmetic and Logic Operators
+        let root = build_ast_root("5 + 5 > 7").unwrap();
 
 
-}
+        // 5 + 5 > 7
+        // 5 -> Output Queue [5] Stack []
+        // + -> Output Queue [5] Stack [+]
+        // 5 -> Output Queue [5, 5] Stack [+]
+        // > -> Output Queue [5, 5, +] Stack [>]
+        // 7 -> Output Queue [5, 5, +, 7] Stack [>]
+        // [5, 5, +, 7, >]
 
-#[test]
-fn test_pop() {
-    set_var!("some_array", "[0,1,2,3]");
-    let (_, root) = build_ast!("$some_array.pop()");
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    println!("{:?}", get_var!("some_array").unwrap());
-}
+        // 5 + 5 > 7
+        // 5 -> Output Queue [5] Stack []
+        // + -> Output Queue [5] Stack [+]
+        // 5 -> Output Queue [5, 5] Stack [+]
+        // > -> Output Queue [5, 5] Stack [+, >]
+        // 7 -> Output Queue [5, 5, 7] Stack [+, >]
+        // [5, 5, 7, >, +]
 
-#[test]
-fn test_as_hex_again() {
-    let root = build_ast_root("e998908042a5043d06846c76bced8fdc5f4e5e91.as(hex)".to_string()).unwrap();
-    let val = root.evaluate().unwrap();
-    let ret = val.get_value();
-    println!("{}", ret);
-    assert_eq!(ret, "0xe998908042a5043d06846c76bced8fdc5f4e5e91");
 
+        let val = root.evaluate().unwrap();
+        let(const_type, value) = val.get_constant_info();
+        println!("Add Greater: {}: {}", const_type, value);
+        assert_eq!(const_type, "Bool");
+        assert_eq!(value, "true");
+    }
+
+    #[test]
+    fn test_more_complex_ast(){
+        let root = build_ast_root("( 17 * 3 ) % 10 == 1").unwrap();
+
+        let val = root.evaluate().unwrap();
+        let(const_type, value) = val.get_constant_info();
+        println!("{}: {}", const_type, value);
+        assert_eq!(const_type, "Bool");
+        assert_eq!(value, "true");
+    }
+
+    #[test]
+    fn test_variables(){
+
+        let map = get_variable_map_instance();
+        set_var!("x", "5");
+
+        let root = build_ast_root("$x == 5").unwrap();
+
+        let val = root.evaluate().unwrap();
+        let (const_type, value) = val.get_constant_info();
+        println!("{}: {}", const_type, value);
+        assert_eq!(const_type, "Bool");
+        assert_eq!(value, "true");
+    }
+
+    #[test]
+    fn test_str_var(){
+        let map = get_variable_map_instance();
+        set_var!("x", "airport");
+
+        let root = build_ast_root("$x == milestone").unwrap();
+        
+        
+        set_var!("x", "milestone");
+
+        let val = root.evaluate().unwrap();
+        let (const_type, value) = val.get_constant_info();
+        println!("{}: {}", const_type, value);
+        assert_eq!(const_type, "Bool");
+        assert_eq!(value, "true");
+    }
+
+    #[test]
+    fn test_function_at(){    
+        set_var!("arr", "[0,1,2,3]");
+
+        let root = build_ast_root("$arr.at(1) != 1").unwrap();
+
+        let val = root.evaluate().unwrap();
+        let v = val.get_value();
+        println!("{}", v);
+        assert_eq!(v, "false");
+
+    }
+
+    #[test]
+    fn test_arr() {
+        set_var!("arr", "[0,1,2,3]");
+        set_var!("arr2", "[0,1,2,3]");
+        set_var!("arr3", "[0,1,2,4]");
+        set_var!("arr4", "['hello','user','a',5]");
+
+        let root = build_ast_root("$arr == $arr2").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "true");
+
+        let root = build_ast_root("$arr != $arr3").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "true");
+
+        println!("{:?}", get_var!("arr4").unwrap());
+
+    }
+
+    #[test]
+    fn convert_values(){
+        set_var!("a", "0xff");
+
+        let root = build_ast_root("$a == 255").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "true");
+
+        let root = build_ast_root("255 == $a").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "true");
+    }
+
+    // #[test]
+    // fn test_tokenizer(){
+    //     let string = "15.0 + 5 > 17 || hallo == hallo && true";
+
+    //     // String "15.0 + 5 > 17 || hallo == hallo && true || &arr.at(1) == 1"
+    //     // Expected tokens: [15.0, +, 5, >, 17, ||, hallo, ==, hallo, &&, true, ||, &arr.at(1), ==, 1]
+
+    //     let tokens = tokenize(string);
+
+    //     println!("Tokens: {:?}", tokens);
+    // }
+
+    #[test]
+    fn negate_array() {
+        set_var!("arr", "[0,1,2,3]");
+
+        let root = build_ast_root("neg $arr").unwrap();
+
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "[0,-1,-2,-3]");
+    }
+
+    #[test]
+    fn test_arrays() {
+        set_var!("arr", "[0,1,2,3]");
+        set_var!("arr2", "[0,1,2,3]");
+        set_var!("arr3", "[0,1,2,4]");
+
+        let root = build_ast_root("$arr + 1").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "[1,2,3,4]");
+        assert_eq!(get_var!(value "arr").unwrap(), "[0,1,2,3]");
+
+        let root = build_ast_root("$arr + 5 > 4").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "true");
+
+        let root = build_ast_root("neg $arr.at(1) == 1").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "false");
+
+        let root = build_ast_root("[0,1,2,3,4].contains(2)").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "true");
+    }
+
+    #[test]
+    fn test_contains() {
+        set_var!("arr", "[0,1,2,3]");
+
+        let root = build_ast_root("$arr.contains(1)").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "true");
+
+        let root = build_ast_root("$arr.contains(60)").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "false");
+    }
+
+    #[test]
+    fn test_conversion() {
+        set_var!("a", "255");
+        let root = build_ast_root("$a.as(hex)").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "0xff");
+    }
+
+    #[test]
+    fn test_string_arithmetic(){
+        let root = build_ast_root("0xff.as(u256) - 1").unwrap();
+
+        let val = root.evaluate().unwrap();
+        let(const_type, value) = val.get_constant_info();
+        println!("{}: {}", const_type, value);
+    }
+
+    #[test]
+    fn test_variable_conversion(){
+        set_var!("a", "255");
+        let root = build_ast_root("( $a - 1 ).as(hex)").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "0xfe");
+
+    }
+
+    #[test]
+    fn test_slices() {
+        set_var!("arr", "[0,1,2,3]");
+
+        let root = build_ast_root("$arr.slice(1,3)").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "[1,2]");
+
+        set_var!("string", "hello");
+        let root = build_ast_root("$string.slice(1,5)").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "ello");
+    }
+
+    #[test]
+    fn test_push() {
+
+        let root = build_ast_root("hello.push(a)").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "helloa");
+
+        set_var!("some_array", "[0,1,2,3]");
+
+        let root = build_ast_root("$some_array.push(5)").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        println!("{:?}", get_var!("some_array").unwrap());
+        assert_eq!(ret, "true");
+
+        set_var!("num", 10);
+        let root = build_ast_root("$some_array.push($num)").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        println!("{:?}", get_var!("some_array").unwrap());
+        assert_eq!(ret, "true");
+
+
+    }
+
+    #[test]
+    fn test_pop() {
+        set_var!("some_array", "[0,1,2,3]");
+        let root = build_ast_root("$some_array.pop()").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        println!("{:?}", get_var!("some_array").unwrap());
+    }
+
+    #[test]
+    fn test_as_hex_again() {
+        let root = build_ast_root("e998908042a5043d06846c76bced8fdc5f4e5e91.as(hex)").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "0xe998908042a5043d06846c76bced8fdc5f4e5e91");
+
+    }
+
+    #[test]
+    fn test_keccak256(){
+        let root = build_ast_root("keccak256(2, 0xe5752128B13c709d2A7E5348E601a016136a3F28, 1000000000000000000)").unwrap();
+
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "0xda907f151946daa4671efcfbd42543ab19dd868bd4f6ab3e7d330746c7683c39");
+
+    }
+
+    #[test]
+    fn test_print(){
+        let root = build_ast_root("5 + 5 == ( 15 - 5 )").unwrap();
+        root.print("");
+        let root = build_ast_root("( $var.push(15) && true ) || 16 / 4 > 3").unwrap();
+        root.print("");
+        let root = build_ast_root("[ 0, 1, 2, 3, 4, hello ]").unwrap();
+        root.print("");
+    }
 }

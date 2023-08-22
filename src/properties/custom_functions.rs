@@ -56,7 +56,7 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
             //  Only Parse the variables 
             let v = value.as_str().unwrap();
             println!("{}: {}", variable_name, v);
-            if let Ok(root) = crate::build_ast_root(v.to_string()){
+            if let Ok(root) = crate::build_ast_root(v){
                 match root.evaluate(){
                     Ok(r) => {
                         println!("Evaluated: {} to {:?}", variable_name, r);
@@ -141,7 +141,7 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
                 
                 // $var | $var - 1 | $var.as(hex)
                 if !s.contains(")."){
-                    let root = build_ast_root(s.clone()).unwrap();
+                    let root = build_ast_root(s.clone().as_str()).unwrap();
                     // println!("Root: {:?}", root);
                     match root.evaluate() {
                         Ok(val) => {
@@ -156,13 +156,13 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
                     let parts: Vec<&str> = s.split(").").collect();
                     let stmt1 = &parts[0][1..];
                     // println!("Statement: {}", stmt1);
-                    let root = build_ast_root(stmt1.to_string()).unwrap();
+                    let root = build_ast_root(stmt1).unwrap();
                     match root.evaluate(){
                         Ok(val) => {
                             // Make Conversion
                             let st = val.get_value().to_string() + "." + parts[1];
                             // println!("Statement: {}", st);
-                            let stmt2 = build_ast_root(st).unwrap();
+                            let stmt2 = build_ast_root(st.as_str()).unwrap();
                             match stmt2.evaluate(){
                                 Ok(val) => {
                                     s = val.get_value().to_string();
