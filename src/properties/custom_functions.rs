@@ -1,15 +1,10 @@
-use std::arch::x86_64::_MM_ROUND_DOWN;
-use std::collections::{HashMap, BTreeMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::{fs, vec};
-use std::str::FromStr;
 
-use ethnum::{u256, i256, U256};
-use serde_json::{Value, Number};
-use hex::encode;
-use sha3::digest::typenum::array;
+use serde_json::Value;
 
-use super::{error};
+use super::error;
 
 use crate::{ChainConfig, set_var, get_var, utils};
 use crate::properties::environment::*;
@@ -482,6 +477,10 @@ pub fn replace_variables(json: &mut Value, params: Vec<String>, counter: &mut us
 
 #[test]
 fn test_execute_custom_function() {
+    use ethnum::{u256, i256};
+    use std::str::FromStr;
+
+
     let val = struct_from_json("D:/Masterarbeit/brigade/properties/test_definition2.json");
     println!("{:?}", val);
     let results = execute_custom_function(&val).unwrap();

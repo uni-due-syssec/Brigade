@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf, fs, str::FromStr, fmt::Debug};
+use std::{collections::HashMap, str::FromStr, fmt::Debug};
 
 use serde::{Deserialize, Serialize};
 
@@ -202,6 +202,9 @@ impl LogicParser<String>
 
 #[test]
 fn test_description_file_serialization(){
+    use std::path::PathBuf;
+    use std::fs;
+    
     let path = PathBuf::from("properties/property_definition.json");
     let content = fs::read_to_string(path).unwrap();
     let descriptor: PatternDescription = serde_json::from_str(&content).unwrap();

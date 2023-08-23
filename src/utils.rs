@@ -1,4 +1,3 @@
-use std::{sync::{Mutex, Arc, Once}, mem::MaybeUninit, thread::JoinHandle};
 use ethnum::{u256, uint, i256, int};
 
 use crate::properties::Properties;
@@ -91,7 +90,7 @@ pub fn get_ethereum_topic_ids(event_header: &str) -> String {
 
 #[test]
 fn test_topic_ids_ethereum(){
-    let event_header = "IncompleteVerification()";
+    let event_header = "IncompleteVerification(uint256)";
     let topic_id = get_ethereum_topic_ids(event_header);
     println!("{}", topic_id);
 }

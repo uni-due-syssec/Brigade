@@ -4,20 +4,19 @@ use std::mem::MaybeUninit;
 use std::str::FromStr;
 use std::sync::Once;
 
-use crate::utils;
-
 use super::ast::{ASTNode, ASTConstant};
 
-use ethnum::{u256, i256, int, uint, AsI256, AsU256, U256, I256};
+use ethnum::{u256, i256, AsI256, AsU256};
 use serde_json::Value;
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum VarValues{
     String(String),
     Number(u256),
     SignedNumber(i256),
     Bool(bool),
     Array(Vec<VarValues>),
+    Map(HashMap<String, VarValues>)
 }
 
 pub trait GetVar<T> {
@@ -192,6 +191,16 @@ where
     }
 }
 
+impl GetVar<HashMap<String, VarValues>> for HashMap<String, VarValues>{
+    fn get_value(value: VarValues) -> Option<Self> {
+        if let VarValues::Map(v) = value {
+            Some(v)
+        }else{
+            None
+        }
+    }
+}
+
 impl VarValues {
 
     pub fn get_type(&self) -> String {
@@ -201,6 +210,7 @@ impl VarValues {
             VarValues::SignedNumber(_) => "SignedNumber".to_string(),
             VarValues::Bool(_) => "Bool".to_string(),
             VarValues::Array(_) => "Array".to_string(),
+            VarValues::Map(_) => "Map".to_string(),
         }
     }
 
@@ -214,6 +224,10 @@ impl VarValues {
                 let s = value.iter().map(|value| value.get_value()).collect::<Vec<String>>().join(",");
                 return format!("[{}]", s);
             },
+            VarValues::Map(value) => {
+                let s = value.iter().map(|(key, value)| format!("{}:{}", key, value.get_value())).collect::<Vec<String>>().join(",");
+                return format!("{{{}}}", s);
+            }
         }
     }
 
@@ -273,6 +287,14 @@ impl VarValues {
                 }
                 ASTNode::Array(arr)
             },
+            VarValues::Map(value) => {
+                let mut map = HashMap::new();
+                for (k, v) in value {
+                    map.insert(k.clone(), Box::new(v.to_ASTNode()));
+                }
+
+                ASTNode::Map(map)
+            }
         }
     }
 }
@@ -288,6 +310,16 @@ impl FromStr for VarValues {
                 arr.push(VarValues::from_str(v).unwrap());
             }
             return Ok(VarValues::Array(arr));
+        }
+        if s.starts_with('{') {
+            // Is Map
+            // E.g. {a: 1, b: 2}
+            let mut map: HashMap<String, VarValues> = HashMap::new();
+            for v in s[1..s.len() - 1].split(","){
+                let kv = v.split(":").collect::<Vec<&str>>();
+                map.insert(kv[0].to_string(), VarValues::from_str(kv[1].trim()).unwrap());
+            }
+            return Ok(VarValues::Map(map));
         }
         match s.parse::<u256>() {
             Ok(value) => Ok(VarValues::Number(value)),
@@ -317,8 +349,20 @@ impl From<&str> for VarValues {
             let res = v.iter().map(|x| VarValues::from(*x)).collect::<Vec<VarValues>>();
             return VarValues::Array(res);
         }
+        if value.starts_with('{'){
+            let v = value[1..value.len()-1].split(",").collect::<Vec<&str>>();
+            let mut map = HashMap::new();
+            for val in v{
+                let kv = val.split(":").collect::<Vec<&str>>();
+                map.insert(kv[0].to_string(), VarValues::from(kv[1].trim()));
+            }
+            return VarValues::Map(map);
+        }
         if value.parse::<u256>().is_ok(){
             return VarValues::Number(value.parse::<u256>().unwrap());
+        }
+        if value.parse::<i256>().is_ok(){
+            return VarValues::SignedNumber(value.parse::<i256>().unwrap());
         }
         VarValues::String(value.to_owned())
     }
@@ -463,8 +507,24 @@ impl From<Value> for VarValues {
                 }
                 VarValues::Array(arr)
             },
+            Value::Object(map) => {
+                let mut new_map = HashMap::new();
+                for (key, value) in map{
+                    new_map.insert(key, VarValues::from(value));
+                }
+                VarValues::Map(new_map)
+            },
             _ => VarValues::String(s.to_string()),
         }
+    }
+}
+
+impl<T: Clone> From<HashMap<String, T>> for VarValues 
+where VarValues: From<T>
+{
+    fn from(map: HashMap<String, T>) -> Self {
+        let new_map = map.iter().map(|(key, value)| (key.clone(), VarValues::from(value.clone()))).collect();
+        VarValues::Map(new_map)
     }
 }
 
@@ -688,7 +748,7 @@ fn test_var_types() {
     
     println!("{:?}", get_variable_map_instance().get("a").unwrap().get_type());
 
-    let a: I256 = get_var::<I256>(&get_variable_map_instance(), "a").unwrap();
+    let a: i256 = get_var::<i256>(&get_variable_map_instance(), "a").unwrap();
 
     assert_eq!(a, 15);
 }
@@ -744,4 +804,41 @@ fn test_keystore() {
     set_var!("keystore", key_vec.clone());
 
     println!("{:?}", get_variable_map_instance());
+}
+
+#[test]
+fn test_hashmaps(){
+    set_var!("hashmap", "{some_key: 150001, another_key: hello_world}");
+
+    let hashmap: VarValues = get_var!("hashmap").expect("Value not found");
+    println!("{:?}", hashmap);
+
+    let mut map: HashMap<String, VarValues> = HashMap::get_value(hashmap).unwrap();
+    println!("{:?}", map);
+    map.insert("test".to_string(), VarValues::from(vec![1,2,3,4]));
+
+    println!("{:?}", get_var!("hashmap").unwrap());
+
+    set_var!("hashmap", map.clone());
+
+    println!("{:?}", get_var!("hashmap").unwrap());
+
+}
+
+#[test]
+fn test_clear_map(){
+
+    set_var!("delete_me", 1);
+    
+    // Setup persistent keystore
+    set_var!("keystore", VarValues::Array(vec![]));
+
+    // Setup persistent Hashmap
+    set_var!("map", VarValues::Map(HashMap::new()));
+
+    // Clear all non persistent variables
+    let map = get_variable_map_instance();
+    map.retain(|k, _| *k == "keystore" || *k == "map");
+
+    println!("{:?}", map);
 }

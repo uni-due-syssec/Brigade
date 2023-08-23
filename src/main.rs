@@ -1,16 +1,15 @@
 use configs::ChainConfig;
-use ethnum::{uint, int, u256, i256};
+use ethnum::{u256, i256};
 use owo_colors::OwoColorize;
 use properties::Properties;
 use properties::custom_functions::execute_custom_function;
-use sockets::event_socket::{Event, HubSocket, BlockingQueue, Allowance};
-use ws::listen;
-use std::f32::consts::E;
-use std::io::{Read, Write};
+use sockets::event_socket::{Event, BlockingQueue, Allowance};
+use std::collections::HashMap;
+use std::io::{Write, Read};
 use std::net::{TcpListener, TcpStream};
-use std::sync::mpsc::{Sender, Receiver, channel};
+use std::sync::mpsc::{Sender, Receiver};
 use std::{fs, path::Path};
-use serde_json::{json, Value, Number};
+use serde_json::Value;
 use std::sync::{Mutex, Arc, mpsc};
 
 use properties::ast::*;
@@ -82,6 +81,9 @@ fn main() {
 
     // Setup persistent keystore
     set_var!("keystore", VarValues::Array(vec![]));
+
+    // Setup persistent Hashmap
+    set_var!("map", VarValues::Map(HashMap::new()));
 
     // Run through all files in directory dir and print their paths
     for entry in fs::read_dir(dir).unwrap() {
@@ -196,18 +198,30 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
         root.print("");
 
         // Evaluate AST
-        let val = root.evaluate().unwrap();
-        let ret: bool = val.get_value().parse().unwrap();
-
-        // Save result
-        if ret {
-            println!("{} transaction: {} From: {}", "Allow".green(), property.transaction_hash.clone().unwrap(), name.yellow());
-            results.push(true);
-        } else {
-            println!("{} transaction: {} From: {}", "Deny".red(), property.transaction_hash.clone().unwrap(), name.yellow());
-            fail_reason.push(name.clone().to_string());
-            results.push(false);
+        let val = root.evaluate();
+        match val {
+            Ok(v) => {
+                let ret: bool = v.get_value().parse().unwrap();     
+                        // Save result
+                if ret {
+                    println!("{} transaction: {} From: {}", "Allow".green(), property.transaction_hash.clone().unwrap(), name.yellow());
+                    results.push(true);
+                } else {
+                    println!("{} transaction: {} From: {}", "Deny".red(), property.transaction_hash.clone().unwrap(), name.yellow());
+                    fail_reason.push(name.clone().to_string());
+                    results.push(false);
+                }   
+            }
+            Err(e) => {
+                println!("{} transaction: {} From: {}", "Deny".red(), property.transaction_hash.clone().unwrap(), name.yellow());
+                println!("Error: {}", e);
+                fail_reason.push(name.clone().to_string());
+                results.push(false);
+            }
         }
+        
+
+
     }
     let is_allowed: Allowance = if results.iter().all(|x| *x) { 
         Allowance::Allow 
@@ -222,6 +236,12 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
     };
 
     event_queue.push(event);
+
+    println!("Variables: {:?}", get_variable_map_instance());
+
+    // Clear all non persistent variables
+    let map = get_variable_map_instance();
+    map.retain(|k, _| *k == "keystore" || *k == "map");
 
     println!("Variables: {:?}", get_variable_map_instance());
 

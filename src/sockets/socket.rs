@@ -1,7 +1,6 @@
 use ws::Handler;
 use serde_json::Value;
-use crate::{message_formats::ethereum_message::{EthereumEventMessage, EthereumConfirmMessage, EthereumTransactionByHash, EthereumBalanceMessage}, properties::Properties};
-use crate::utils;
+use crate::properties::Properties;
 
 /// The Endpoint Client for the Blockchain Smart Contracts
 /// Here a Handler will fetch and process the events and take care of the websocket connection

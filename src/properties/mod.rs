@@ -1,15 +1,10 @@
-use std::{path::{Path, PathBuf}, str::FromStr, fs};
+use std::{path::PathBuf, str::FromStr, fs};
 
-use ethnum::{u256, AsU256, i256, U256};
+use ethnum::u256;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::{set_var, get_var, properties::environment::GetVar};
-use crate::VarValues;
-use crate::get_variable_map_instance;
-
-use self::ast::ASTNode;
 
 mod description_parser;
 #[macro_use]
@@ -114,6 +109,12 @@ pub struct Account{
 
 #[test]
 fn test_prp_as_vars() {
+
+    use crate::{set_var, get_var, properties::environment::GetVar};
+    use crate::VarValues;
+    use crate::get_variable_map_instance;
+    use ethnum::AsU256;
+    use ethnum::i256;
     let mut prp = Properties::new();
 
     prp.payer_address = Some("0x0".to_string());
