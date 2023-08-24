@@ -90,7 +90,7 @@ pub fn get_ethereum_topic_ids(event_header: &str) -> String {
 
 #[test]
 fn test_topic_ids_ethereum(){
-    let event_header = "IncompleteVerification(uint256)";
+    let event_header = "PrivilegedEvent()";
     let topic_id = get_ethereum_topic_ids(event_header);
     println!("{}", topic_id);
 }
