@@ -152,7 +152,7 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
                     match root.evaluate() {
                         Ok(val) => {
                             s = val.get_value().to_string();
-                            // println!("Variable: {}", s);
+                            println!("Variable: {}", s);
                         },
                         Err(e) => {
                             println!("Variable error: {}", e);
