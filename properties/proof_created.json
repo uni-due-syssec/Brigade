@@ -1,0 +1,14 @@
+{
+    "event": "ProofCreated(bytes32,address)",
+    "chain_name": "ethereum",
+    "properties": {
+        "temp": "$event_data.slice(2, 66)",
+        "proof": "$temp.as(hex)",
+        "verified_account": "$event_data.slice(90, 130).as(hex)"
+    },
+    "pattern": [
+        "$map.insert($verified_account, $proof)",
+        "$verified_account.push(amount) && true ",
+        "$map.insert($verified_account, $value)"
+    ]
+}

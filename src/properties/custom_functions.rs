@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::f32::consts::E;
 use std::path::Path;
 use std::{fs, vec};
 
@@ -31,17 +32,20 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
         let mut deps = HashSet::new();
         // Check if dependant
         for (i, d) in possible_dependencies.iter().enumerate(){
-            if value.as_str().unwrap().contains(possible_dependencies[i]){
-                deps.insert(possible_dependencies[i].to_string());
+            let re = regex::Regex::new(&format!(r"\${}[^a-zA-Z0-9_]", d)).unwrap();
+            if re.is_match(value.as_str().unwrap()){
+                deps.insert(d.to_string());
             }
         }
         dependencies.insert(key.clone(), deps);
     }
 
+    // println!("Dependencies: {:?}", dependencies);
+
     // Sort properties
     let sorted = sort_dependencies(&dependencies).unwrap();
 
-    println!("Sorted: {:?}", sorted);
+    // println!("Sorted: {:?}", sorted);
     for variable_name in sorted{
 
     // //for (variable_name, value) in properties{
@@ -67,7 +71,13 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
             continue;
         }
 
-        //println!("{:?} {:?}", key, value.as_str().unwrap());
+        if !value.as_str().unwrap().contains('.') && !value.as_str().unwrap().contains('$'){
+            set_var!(variable_name, value.clone());
+            println!("{}: {}", variable_name, value.as_str().unwrap());
+            continue;
+        }
+
+        println!("{:?} {:?}", variable_name, value.as_str().unwrap());
         let tokens = tokenize(value.as_str().unwrap().to_string());
         //let p = value.as_str().unwrap().split('.');
         let func: Vec<&str> = tokens.iter().map(|s| s.as_str()).collect();
@@ -81,7 +91,28 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
         let f = format!("config/{}_config.json", chain_name);
         let p = Path::new(&f);
 
-        let config: ChainConfig = serde_json::from_str(&fs::read_to_string(p).unwrap()).unwrap();
+        let config: ChainConfig = match fs::read_to_string(p) {
+            Ok(s) => {
+                serde_json::from_str(&s).unwrap()
+            },
+            Err(e) => 
+            {
+                // println!("Searching for file");
+                let mut cc: ChainConfig = ChainConfig::default();
+                // Find path for chain config
+                for file in fs::read_dir("config").unwrap() {
+                    let path = file.unwrap().path();
+                    cc = serde_json::from_str(&fs::read_to_string(path.as_path()).unwrap()).unwrap();
+                    if cc.get_name() == chain_name{
+                        // println!("Found: {}", path.display());
+                        break;
+                    }
+                }
+                cc
+            }
+        };
+
+        // let config: ChainConfig = serde_json::from_str(&fs::read_to_string(p).unwrap()).unwrap();
 
         // Process function
         let temp = tokenize_function(function.to_string());
@@ -90,41 +121,21 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
         f.remove(0);
         let mut parameter_list = f.iter().map(|x| x.to_string()).collect::<Vec<String>>();
 
-        // for (id, p) in parameter_list.iter_mut().enumerate(){
-        //     if p.contains('$'){
-        //         if let Ok(r) = build_ast_root(p.to_string()){
-        //             match r.evaluate(){
-        //                 Ok(r) => {
-        //                     println!("Evaluated: {} to {:?}", p, r);
-        //                     *p = r.get_value();
-        //                 },
-        //                 Err(e) => {
-        //                     println!("Failed to evaluate: {} with reason: {:?}", p, e);
-        //                 }
-        //             }
-        //         }else{
-        //             println!("Failed to parse: {}", p);
-        //         }
-        //     }
-        // }
-
-        // println!("Function: {}", function_name);
-        // println!("Parameters: {:?}", parameter_list);
-
         let function_path = format!("functions/{}/{}.json", chain_name, function_name);
         //println!("{:?}", function_path);
         let mut function_json: Value = serde_json::from_str(std::fs::read_to_string(&function_path).unwrap().as_str()).unwrap();
 
-        let block_function: Value = serde_json::from_str(std::fs::read_to_string(&format!("functions/{}/get_block_number.json", chain_name)).unwrap().as_str()).unwrap();
-        let client = reqwest::blocking::Client::new();
-        let res = client.post(&config.get_http_url()).json(&block_function).send().unwrap();
-        let body = res.text().unwrap();
-        let json_body: Value = serde_json::from_str(&body.as_str()).unwrap();
-        let block_number = json_body.get("result").unwrap();
-        // println!("Block Number: {}", block_number.as_str().unwrap());
+        // let block_function: Value = serde_json::from_str(std::fs::read_to_string(&format!("functions/{}/get_block_number.json", chain_name)).unwrap().as_str()).unwrap();
+        // let client = reqwest::blocking::Client::new();
+        // let res = client.post(&config.get_http_url()).json(&block_function).send().unwrap();
+        // let body = res.text().unwrap();
+        // let json_body: Value = serde_json::from_str(&body.as_str()).unwrap();
+        // let block_number = json_body.get("result").unwrap();
+        // // println!("Block Number: {}", block_number.as_str().unwrap());
 
-        let var_name: String = format!("{}_block_number", chain_name);
-        set_var!(var_name, block_number.as_str().unwrap());
+        // // TODO: Refactor: Move to event detection as the block number is updated on each function call right now.
+        // let var_name: String = format!("{}_block_number", chain_name);
+        // set_var!(var_name, block_number.as_str().unwrap());
 
         // Get Parameter and change Variable fields
         let mut params = vec![];
@@ -182,17 +193,17 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
         replace_variables(&mut function_json, params, &mut counter);
 
         // println!("{:?}", function_json);  
-
+        let client = reqwest::blocking::Client::new();
         let res = client.post(&config.get_http_url()).json(&function_json).send().unwrap();
         let body = res.text().unwrap();
-        // println!("{:?}", body);
+        println!("{:?}", body);
         let result:Value = serde_json::from_str(&body.as_str()).unwrap();
         // println!("Result: {}", serde_json::to_string_pretty(&result).unwrap());
 
         let path_to_val: Vec<&str> = fieldname.split(".").collect();
         
         if let Some(v) = find_value_by_path(&result, &path_to_val){
-            println!("Found {} for key {}", v, fieldname);
+            println!("{} = {}", fieldname, v);
             if field_and_type.len() == 3{
                 let fieldtype = field_and_type[2];
                 match fieldtype {

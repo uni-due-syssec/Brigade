@@ -96,11 +96,16 @@ fn main() {
         let thread_names_clone = Arc::clone(&thread_names);
         thread_ids.push(thread::spawn(move || {
             // Deserialize the file contents into a ChainConfig
-            let contents = fs::read_to_string(path).unwrap();
+            let contents = fs::read_to_string(path.clone()).unwrap();
             let config: ChainConfig = serde_json::from_str(&contents).unwrap();
             let mut t = thread_names_clone.lock().unwrap();
             t.push(config.get_name());
             
+            let contract_name = path.file_name().unwrap().to_str().unwrap().split('_').collect::<Vec<&str>>()[0];
+
+            let cn = contract_name.to_string() + "_contract";
+            set_var!(cn, config.get_contract_address());
+
             config.connect(sender).unwrap();
             println!("Connected to {}", config.get_name());
         }));
@@ -116,6 +121,13 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
     let prp = property.serialize();
 
     for (key, value) in prp.as_object().unwrap() {
+        if key.to_string() == "block_number"{
+            let bn = property.src_chain.clone().unwrap() + "_" + key;
+            let v = &value.as_str().unwrap()[5..];
+            println!("{}: {}", bn, v);
+            set_var!(bn, u256::from_str(v).unwrap());
+            continue;
+        }
         if value.is_string() && value.as_str().unwrap().starts_with("u256:"){
             let s = &value.as_str().unwrap()[5..];
             set_var!(key, u256::from_str(s).unwrap());
@@ -128,7 +140,7 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
         }
     }
 
-    // println!("Variables: {:?}", list_variables(get_variable_map_instance()));
+    println!("Variables: {:?}", list_variables(get_variable_map_instance()));
 
     // Which Event?
     let event = property.occured_event.clone().unwrap();
@@ -241,7 +253,7 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
 
     // Clear all non persistent variables
     let map = get_variable_map_instance();
-    map.retain(|k, _| *k == "keystore" || *k == "map");
+    map.retain(|k, _| *k == "keystore" || *k == "map" || k.contains("_contract"));
 
     println!("Variables: {:?}", get_variable_map_instance());
 

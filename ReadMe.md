@@ -37,6 +37,10 @@ However, by adding the variables either to the keystore or the map allows to mak
 
 The special variables `$keystore` and `$map` are global and can be used to persistently store variables throughout events or chains.
 
+Preset variables include:
+- `$chain_name_block_number` e.g. `$ethereum_block_number` holds the block number of the current event
+- `$config_file_prefix_contract` e.g. `$eth2_contract` holds the contract address for each config file. Hint: name config files with `prefix_config.json`
+
 ### Functions
 Here is a list of all supported functions. Note that not every data type can be used with every function.
 When using arrays, every operation itself is a for each operation.

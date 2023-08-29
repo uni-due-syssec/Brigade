@@ -35,7 +35,10 @@ impl EthereumSocketHandler {
             // Add event message params to the variables
             println!("Message: {}", ethereum_msg);
 
-            let event_data = ethereum_msg.params.result.data.clone().strip_prefix("0x").unwrap().to_string();
+            let event_data = ethereum_msg.params.result.data.clone();
+            if event_data.len() <= 2 {
+                println!("No Event Data");
+            }
             set_var!("event_data", event_data);
 
             // A new Event is emitted --> A new Index in the properties list must be added

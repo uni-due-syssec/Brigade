@@ -1,0 +1,18 @@
+{
+    "event": "TBD",
+    "chain_name": "ethereum",
+    "properties": {
+        "function_signature": "0x84db809f",
+        "resource_id": "$event_data.slice(19, 83)",
+        "calldata": "$function_signature.push($resource_id)",
+        "handler_address_full": "ethereum.call_method($calldata, $eth2_contract, $ethereum_block_number).result",
+        "handler_address": "$handler_address_full.slice(26, 66).as(hex)",
+        "handler_signature": "0x0a6d55d8",
+        "token_calldata": "$handler_signature.push($resource_id)",
+        "token_address_full": "ethereum.call_method($token_calldata, $handler_address, $ethereum_block_number).result",
+        "token_address": "$token_address_full.slice(26, 66).as(hex)"
+    },
+    "pattern": [
+        "$token_address != 0x0"
+    ]
+}

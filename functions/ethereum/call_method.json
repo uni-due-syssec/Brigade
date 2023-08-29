@@ -1,0 +1,6 @@
+{
+    "jsonrpc": "2.0",
+    "method": "eth_call",
+    "params": [{"data":"$param","to":"$bridge_address"}, "$block_number"],
+    "id": "1" 
+}

@@ -259,7 +259,7 @@ impl ASTConstant{
             ConversionTarget::Number => {
                 match self {
                     ASTConstant::Number(v) => Ok(ASTConstant::Number(*v)),
-                    ASTConstant::SignedNumber(v) => Ok(ASTConstant::Number(v.as_u256())),
+                    ASTConstant::SignedNumber(v) => Ok(ASTConstant::SignedNumber(*v)),
                     ASTConstant::String(v) => {
                         if v.starts_with("0x"){
                             Ok(ASTConstant::Number(u256::from_str_hex(v).unwrap()))
@@ -268,11 +268,17 @@ impl ASTConstant{
                         }else{
                             let num = u256::from_str(&v);
                             match num{
-                                Ok(v) => Ok(ASTConstant::Number(v)),
+                                Ok(v) => {
+                                    // println!("v: {}", v);
+                                    Ok(ASTConstant::Number(v))
+                                },
                                 Err(_) =>{
                                     let hex_num = u256::from_str_radix(&v, 16);
                                     match hex_num{
-                                        Ok(v) => Ok(ASTConstant::Number(v)),
+                                        Ok(v) => {
+                                            // println!("v: {}", v);
+                                            Ok(ASTConstant::Number(v))
+                                        },
                                         Err(e) => Err(ASTError::InvalidConversion(v.to_string(), "number".to_string()))        
                                     }
                                 }

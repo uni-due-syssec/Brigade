@@ -1,0 +1,15 @@
+{
+    "event": "IncompleteVerification(uint256,bytes32)",
+    "chain_name": "ethereum",
+    "properties": { 
+        "val": "$event_data.slice(2,66).as(u256)",
+        "proof_hash": "$event_data.slice(66,130).as(hex)"
+    },
+    "pattern": [
+        "$map.get($payer_address) == $proof_hash",
+        "$map.remove($payer_address)",
+        "$payer_address.push(amount) && true",
+        "$map.get($payer_address) == $val",
+        "$map.remove($payer_address)"
+    ]
+}

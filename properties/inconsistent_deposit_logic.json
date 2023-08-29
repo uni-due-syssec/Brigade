@@ -3,7 +3,7 @@
     "chain_name": "ethereum",
     "properties": { 
         "balance_after": "ethereum.get_balance($payer_address, $ethereum_block_number.as(hex)).result",
-        "balance_before": "ethereum.get_balance($payer_address, ($ethereum_block_number.as(u256) - 1).as(hex)).result",
+        "balance_before": "ethereum.get_balance($payer_address, ($ethereum_block_number - 1).as(hex)).result",
         "gas_amount": "ethereum.get_transaction_by_hash($transaction_hash).result.gas",
         "gas_price": "ethereum.get_transaction_by_hash($transaction_hash).result.gasPrice"
     },

@@ -67,7 +67,7 @@ impl ChainConfig {
 
     fn connect_generic(&self, event_channel: Sender<Properties>) -> Result<()> {
         ws::connect(self.rpc_url.clone(), |out| {
-            // // Request subscription for Chain Events
+            // Request subscription for Chain Events
             let request = json!({
                 "jsonrpc": "2.0",
                 "method": self.get_subscription_method(),
@@ -90,7 +90,7 @@ impl ChainConfig {
 
     fn connect_ethereum(&self, event_channel: Sender<Properties>) -> Result<()> {
         ws::connect(self.rpc_url.clone(), |out| {
-            // // Request subscription for Chain Events
+            // Request subscription for Chain Events
             let request = json!({
                 "jsonrpc": "2.0",
                 "method": self.get_subscription_method(),
