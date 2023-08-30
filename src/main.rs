@@ -5,9 +5,10 @@ use properties::Properties;
 use properties::custom_functions::execute_custom_function;
 use sockets::event_socket::{Event, BlockingQueue, Allowance};
 use std::collections::HashMap;
-use std::io::{Write, Read};
+use std::io::{Write, Read, ErrorKind};
 use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc::{Sender, Receiver};
+use std::time::Instant;
 use std::{fs, path::Path};
 use serde_json::Value;
 use std::sync::{Mutex, Arc, mpsc};
@@ -39,8 +40,6 @@ struct Args {
 }
 
 fn main() {
-
-
     // Argument parsing
     let args = Args::parse();
     let mut ip_addr = "127.0.0.1:8080".to_string();
@@ -98,13 +97,13 @@ fn main() {
             // Deserialize the file contents into a ChainConfig
             let contents = fs::read_to_string(path.clone()).unwrap();
             let config: ChainConfig = serde_json::from_str(&contents).unwrap();
-            let mut t = thread_names_clone.lock().unwrap();
-            t.push(config.get_name());
             
             let contract_name = path.file_name().unwrap().to_str().unwrap().split('_').collect::<Vec<&str>>()[0];
 
             let cn = contract_name.to_string() + "_contract";
             set_var!(cn, config.get_contract_address());
+
+            thread_names_clone.lock().unwrap().push(contract_name.to_string());
 
             config.connect(sender).unwrap();
             println!("Connected to {}", config.get_name());
@@ -117,6 +116,10 @@ fn main() {
 }
 
 fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> bool {
+
+    // Timings
+    let timestamp = Instant::now();
+
     // Build generic Variables from property description
     let prp = property.serialize();
 
@@ -249,7 +252,10 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
 
     event_queue.push(event);
 
-    println!("Variables: {:?}", get_variable_map_instance());
+    // println!("Variables: {:?}", get_variable_map_instance());
+
+    let time_since = timestamp.elapsed();
+    println!("Time: {}ms", time_since.as_millis());
 
     // Clear all non persistent variables
     let map = get_variable_map_instance();
@@ -292,12 +298,35 @@ fn setup_event_ws(addr: String, event_queue: Arc<BlockingQueue<Event>>) -> Resul
         loop {
             let event = event_queue.pop();
             println!("{:?}", event);
-            connections_clone2.lock().unwrap().iter().for_each(|mut x| {
+
+            for (id, mut x) in connections_clone2.lock().unwrap().iter_mut().enumerate() {
                 match x.write_all(&serde_json::to_vec(&event).unwrap()) {
                     Ok(_) => {},
-                    Err(e) => {println!("Error {}: {}", x.peer_addr().unwrap(), e);}
+                    Err(e) => {
+                        match e.kind() {
+                        ErrorKind::ConnectionAborted | ErrorKind::ConnectionReset => {
+                            x.shutdown(std::net::Shutdown::Both).unwrap();
+                            connections_clone2.lock().unwrap().remove(id);
+                        },
+                        _ => println!("Error {}: {}", x.peer_addr().unwrap(), e),
+                        }
+                    }
                 }
-            })
+            }
+            // connections_clone2.lock().unwrap().iter().for_each(|mut x| {
+            //     match x.write_all(&serde_json::to_vec(&event).unwrap()) {
+            //         Ok(_) => {},
+            //         Err(e) => {
+            //             match e.kind() {
+            //             ErrorKind::ConnectionAborted | ErrorKind::ConnectionReset => {
+            //                 x.shutdown(std::net::Shutdown::Both).unwrap();
+            //                 connections_clone2.lock().unwrap().remove(x);
+            //             }
+            //             _ => println!("Error {}: {}", x.peer_addr().unwrap(), e),
+            //             }
+            //         }
+            //     }
+            // })
         }
     });
     // broadcast events
