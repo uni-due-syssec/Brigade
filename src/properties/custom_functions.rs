@@ -55,18 +55,22 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
             //  Only Parse the variables 
             let v = value.as_str().unwrap();
             println!("{}: {}", variable_name, v);
-            if let Ok(root) = crate::build_ast_root(v){
-                match root.evaluate(){
-                    Ok(r) => {
-                        println!("Evaluated: {} to {:?}", variable_name, r);
-                        set_var!(variable_name, r);
-                    },
-                    Err(e) => {
-                        println!("Failed to evaluate: {} with reason: {:?}", variable_name, e);
+            match crate::build_ast_root(v){
+                Ok(root) => {
+                    match root.evaluate(){
+                        Ok(r) => {
+                            println!("Evaluated: {} to {:?}", variable_name, r);
+                            set_var!(variable_name, r);
+                        },
+                        Err(e) => {
+                            println!("Failed to evaluate: {} with reason: {:?}", variable_name, e);
+                        }
                     }
+                },
+                Err(e) => {
+                    println!("Failed to parse: {}", variable_name);
+                    eprintln!("Error: {:?}", e);
                 }
-            }else{
-                println!("Failed to parse: {}", variable_name);
             }
             continue;
         }
