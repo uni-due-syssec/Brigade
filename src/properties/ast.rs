@@ -8,6 +8,7 @@ use super::error::ASTError;
 use super::environment::{get_variable, VariableMap, get_variable_map_instance, VarValues};
 use std::str::FromStr;
 use ethnum::{u256, i256};
+use owo_colors::OwoColorize;
 use sha3::Digest;
 
 /// This file describes an Abstract Syntax Tree which should contain as leaves constants and the branches refer to logical or arithmetic operators.
@@ -22,6 +23,7 @@ pub enum ConversionTarget {
     Number,
     SignedNumber,
     Hex,
+    Address,
     Unknown(String),
 }
 
@@ -32,6 +34,7 @@ impl From<&str> for ConversionTarget {
             "u256" | "'u256'" => ConversionTarget::Number,
             "i256" | "'i256'" => ConversionTarget::SignedNumber,
             "hex" | "'hex'" => ConversionTarget::Hex,
+            "address" | "'address'" => ConversionTarget::Address,
             _ => ConversionTarget::Unknown(s.to_string()),
         }
     }
@@ -131,6 +134,8 @@ pub enum Functions{
     Remove, // Remove key from Map
     Get, // Get Value by Key from Map
     Assign, // Set Variable
+    ToLower, // Transform String into lower case
+    ToUpper, // Transform String into upper case
 }
 
 impl Functions{
@@ -147,6 +152,8 @@ impl Functions{
             Functions::Remove => "remove",
             Functions::Get => "get",
             Functions::Assign => "assign",
+            Functions::ToLower => "tolower",
+            Functions::ToUpper => "toupper",
         }
     }
 
@@ -163,6 +170,8 @@ impl Functions{
             "remove" => Ok(Functions::Remove),
             "get" => Ok(Functions::Get),
             "assign" => Ok(Functions::Assign),
+            "tolower" | "toLower" => Ok(Functions::ToLower),
+            "toupper" | "toUpper" => Ok(Functions::ToUpper),
             _ => Err(ASTError::InvalidFunction(string.to_owned())),
         }
     }
@@ -326,6 +335,24 @@ impl ASTConstant{
                     _ => Err(ASTError::InvalidConversion(self.get_value().to_string(), "hex".to_string()))
                 }
             },
+            ConversionTarget::Address => {
+                match self {
+                    ASTConstant::String(v) => {
+                        let mut resulting_address = String::new();
+                        let mut unprefixed_addr = v.as_str();
+                        if v.starts_with("0x"){
+                            unprefixed_addr = &v[2..];
+                        }
+                        let missing_zeros = 40 - unprefixed_addr.len();
+                        resulting_address += "0x";
+                        resulting_address.push_str(&"0".repeat(missing_zeros));
+                        resulting_address.push_str(unprefixed_addr);
+
+                        Ok(ASTConstant::String(resulting_address))
+                    }
+                    _ => Err(ASTError::InvalidConversion(self.get_value().to_string(), "address".to_string()))
+                }
+            }
             ConversionTarget::Unknown(s) => {
                 println!("Unknown conversion target {}", s);
                 Err(ASTError::UnknownConversionTarget(s))
@@ -392,12 +419,12 @@ impl ASTNode {
 
     pub fn print(&self, prefix: &str) {
         match self {
-            ASTNode::ConstantBool(b) => println!("{}└── Bool: {}", prefix, b),
-            ASTNode::ConstantNumber(n) => println!("{}└── Number: {}", prefix, n),
-            ASTNode::ConstantSignedNumber(n) => println!("{}└── SignedNumber: {}", prefix, n),
-            ASTNode::ConstantString(s) => println!("{}└── String: {}", prefix, s),
+            ASTNode::ConstantBool(b) => println!("{}└── {}: {}", prefix, "Bool".yellow(), b),
+            ASTNode::ConstantNumber(n) => println!("{}└── {}: {}", prefix, "Number".yellow(), n),
+            ASTNode::ConstantSignedNumber(n) => println!("{}└── {}: {}", prefix, "SignedNumber".yellow(), n),
+            ASTNode::ConstantString(s) => println!("{}└── {}: {}", prefix, "String".yellow(), s),
             ASTNode::Array(arr) => {
-                println!("{}└── Array:", prefix);
+                println!("{}└── {}:", prefix, "Array".green());
                 let last = arr.len() - 1;
                 for (i, v) in arr.iter().enumerate() {
                     let new_prefix = if i == last { "   " } else { "│  " };
@@ -406,7 +433,7 @@ impl ASTNode {
                 }
             },
             ASTNode::Map(map) => {
-                println!("{}└── Map:", prefix);
+                println!("{}└── {}:", prefix, "Map".green());
                 let last = map.len() - 1;
                 for (id,(k, v)) in map.iter().enumerate() {
                     let new_prefix = if id == last { "   " } else { "│  " };
@@ -416,31 +443,31 @@ impl ASTNode {
             },
             ASTNode::Variable(name, _) =>{
                 if let Some(v) = get_var!(name){
-                    println!("{}└── Variable: {}", prefix, v.get_value())
+                    println!("{}└── {}: {}", prefix, name.blue(), v.get_value())
                 }else{
-                    println!("{}└── Variable: {}", prefix, name)
+                    println!("{}└── {}: {}", prefix, "Variable".red(), name)
                 }
             },
             ASTNode::UnaryArithmetic(operator, value) => {
-                println!("{}└── Arithmetic: {}", prefix, operator.to_string());
+                println!("{}└── {}: {}", prefix, "Arithmetic".fg_rgb::<156, 9, 95>(), operator.to_string());
                 value.print(&format!("{}    ", prefix));
             },
             ASTNode::BinaryArithmetic(operator, left, right) => {
-                println!("{}└── Arithmetic: {}", prefix, operator.to_string());
+                println!("{}└── {}: {}", prefix, "Arithmetic".fg_rgb::<156, 9, 95>(), operator.to_string());
                 left.print(&format!("{}│   ", prefix));
                 right.print(&format!("{}    ", prefix));
             },
             ASTNode::UnaryLogic(operator, value) => {
-                println!("{}└── Logic: {}", prefix, operator.to_string());
+                println!("{}└── {}: {}", prefix, "Logic".fg_rgb::<112, 9, 156>(), operator.to_string());
                 value.print(&format!("{}    ", prefix));
             },
             ASTNode::BinaryLogic(operator, left, right) => {
-                println!("{}└── Logic: {}", prefix, operator.to_string());
+                println!("{}└── {}: {}", prefix, "Logic".fg_rgb::<112, 9, 156>(), operator.to_string());
                 left.print(&format!("{}│   ", prefix));
                 right.print(&format!("{}    ", prefix));
             },
             ASTNode::Function(func, args) => {
-                println!("{}└── Function: {}", prefix, func.to_string());
+                println!("{}└── {}: {}", prefix, "Function".cyan(), func.to_string());
                 let last = args.len() - 1;
                 for (i, arg) in args.iter().enumerate() {
                     let new_prefix = if i == last { "   " } else { "│  " };
@@ -1189,8 +1216,20 @@ impl ASTNode {
                         let value = args[1].evaluate()?;
                         match set {
                             ASTConstant::Array(arr)=> {
-                                Ok(ASTConstant::Bool(arr.iter().any(|element| element.get_value() == value.get_value())))
+                                println!("{}\n{}", arr.len(), value.get_value());
+                                for element in arr {
+                                    println!("{}", element.get_value());
+                                    if element.get_value() == value.get_value() {
+                                        
+                                        return Ok(ASTConstant::Bool(true));
+                                    }
+                                }
+                                Ok(ASTConstant::Bool(false))
+                                //Ok(ASTConstant::Bool(arr.iter().any(|element| element.get_value() == value.get_value())))
                             },
+                            ASTConstant::String(s) => {
+                                Ok(ASTConstant::Bool(s.contains(&value.get_value())))
+                            }
                             _ => Err(ASTError::InvalidFunctionInvocation("contains".to_owned())),
                         }
                     },
@@ -1475,6 +1514,28 @@ impl ASTNode {
                             }
                         }
                     }
+                    Functions::ToLower => {
+                        let me = args[0].evaluate()?;
+                        match me {
+                            ASTConstant::String(s) => {
+                                Ok(ASTConstant::String(s.to_lowercase()))
+                            }
+                            _ => {
+                                Err(ASTError::InvalidFunctionInvocation("tolower".to_owned()))
+                            }
+                        }
+                    },
+                    Functions::ToUpper => {
+                        let me = args[0].evaluate()?;
+                        match me {
+                            ASTConstant::String(s) => {
+                                Ok(ASTConstant::String(s.to_uppercase()))
+                            },
+                            _ => {
+                                Err(ASTError::InvalidFunctionInvocation("toupper".to_owned()))
+                            }
+                        }
+                    },
                 }
             },
             ASTNode::Array(val) => {
@@ -1692,7 +1753,8 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
                         let args = tokens[id+1].clone();
                         skip_next += 1; // Skip next token
                         let me = stack.pop().unwrap_or(ASTNode::ConstantString("".to_owned()));
-                        let node = ASTNode::Function(Functions::Contains, vec![ Box::new(me) ,Box::new(ASTNode::ConstantString(args))]);
+                        let parsed_arg = parse_token(args.clone()).unwrap_or(ASTNode::ConstantString(args));
+                        let node = ASTNode::Function(Functions::Contains, vec![ Box::new(me) ,Box::new(parsed_arg)]);
                         ast_vec.push(node.clone());
                         stack.push(node);
                     },
@@ -1805,6 +1867,20 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
                         ast_vec.push(node.clone());
                         stack.push(node);
                     }
+                    Functions::ToLower => {
+                        // ToLower takes the preceeding token
+                        let me = stack.pop().unwrap_or(ASTNode::ConstantString("".to_owned()));
+                        let node = ASTNode::Function(Functions::ToLower, vec![ Box::new(me)]);
+                        ast_vec.push(node.clone());
+                        stack.push(node);
+                    },
+                    Functions::ToUpper => {
+                        // ToUpper takes the preceeding token
+                        let me = stack.pop().unwrap_or(ASTNode::ConstantString("".to_owned()));
+                        let node = ASTNode::Function(Functions::ToUpper, vec![ Box::new(me)]);
+                        ast_vec.push(node.clone());
+                        stack.push(node);
+                    },
                 }
             }else{
 
@@ -2625,6 +2701,17 @@ mod test_ast{
     }
 
     #[test]
+    fn test_variable_conversion_leading_zeros(){
+        set_var!("a", "0a0255");
+        let root = build_ast_root("$a.as(hex)").unwrap();
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "0x0a0255");
+
+    }
+
+    #[test]
     fn test_slices() {
         set_var!("arr", "[0,1,2,3]");
 
@@ -2823,5 +2910,50 @@ mod test_ast{
         assert_eq!(ret, "true");
 
         println!("{:?}", get_var!("var").unwrap());
+    }
+
+    #[test]
+    fn test_contains_var() {
+        set_var!("var", "hello");
+        set_var!("var2", "he");
+
+        let root = build_ast_root("$var.contains($var2)").unwrap();
+        root.print("");
+        let val = root.evaluate().unwrap();
+        let ret = val.get_value();
+        println!("{}", ret);
+        assert_eq!(ret, "true");
+    }
+
+    #[test]
+    fn test_contains_keystore() {
+        set_var!("keystore", VarValues::Array(vec![]));
+        let root = build_ast_root("$keystore.push(0x071b8f8f375A1932BAAF356BcA98aAC0128bf5bf)").unwrap();
+        let val = root.evaluate().unwrap();
+
+        set_var!("address", "0x071b8f8f375A1932BAAF356BcA98aAC0128bf5bf");
+
+        let new_command = build_ast_root("$keystore.contains($address) == false").unwrap();
+        let new_val = new_command.evaluate().unwrap();
+        let new_ret = new_val.get_value();
+        new_command.print("");
+        println!("{:?}", get_variable_map_instance());
+        println!("{}", new_ret);
+        assert_eq!(new_ret, "false");
+    }
+
+    #[test]
+    fn test_to_lower() {
+        set_var!("var", "hElLo");
+        let root = build_ast_root("$var.toLower()").unwrap();
+        let val = root.evaluate().unwrap();
+        println!("{}", val.get_value());
+        assert_eq!(val.get_value(), "hello");
+
+        let new_command = build_ast_root("$var.toUpper()").unwrap();
+        let new_val = new_command.evaluate().unwrap();
+        println!("{}", new_val.get_value());
+        assert_eq!(new_val.get_value(), "HELLO");
+
     }
 }

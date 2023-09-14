@@ -7,6 +7,7 @@
     - [Variables](#variables)
     - [Functions](#functions)
     - [ConversionTarget](#conversiontarget)
+    - [Predefined Variables](#predefined-variables)
   - [Hints for later](#hints-for-later)
 
 
@@ -93,6 +94,21 @@ The following types can be converted from and to:
 2. i256
 3. string
 4. hex
+
+### Predefined Variables
+In some cases it is necessary to have environment variables which are stored before execution.
+Therefore, running the Tool with the `-p <file_path>` flag can take predefined patterns and deploy the variables at startup.
+> Note: The patterns are not updated "during" the execution
+>
+The file provided is a json file with a single array as root element, containing all comma separated strings for variables.
+
+E.g. 
+```json
+[
+    "$keystore.push(0xaabb223344aaccddee)",
+    "$map.insert(key, value)"
+]
+```
 
 ## Hints for later
 The name of the config file 'ethereum_config.json' indicates the chain name to be 'ethereum' which is used by the custom functions as prefix.

@@ -7,6 +7,7 @@ use sockets::event_socket::{Event, BlockingQueue, Allowance};
 use std::collections::HashMap;
 use std::io::{Write, Read, ErrorKind};
 use std::net::{TcpListener, TcpStream};
+use std::path::PathBuf;
 use std::sync::mpsc::{Sender, Receiver};
 use std::time::Instant;
 use std::{fs, path::Path};
@@ -37,6 +38,15 @@ struct Args {
     /// Endpoint at which the TCP Port is opened. Default: 127.0.0.1:8080
     #[arg(short, long)]
     endpoint: Option<String>,
+    /// Use predefined variables from a json file. 
+    /// The json file should contain an array containing the patterns for creation of variables
+    /// Example:
+    /// [
+    ///     "keystore.push(0xaabbccddeeff0011)",
+    ///     "keystore.push(0xaabbccddeeff0012)"
+    /// ]
+    #[arg(short, long)]
+    predefined_variables: Option<PathBuf>,
 }
 
 fn main() {
@@ -46,6 +56,48 @@ fn main() {
 
     if let Some(endpoint) = args.endpoint {
         ip_addr = endpoint;
+    }
+
+    // Setup persistent keystore
+    set_var!("keystore", VarValues::Array(vec![]));
+
+    // Setup persistent Hashmap
+    set_var!("map", VarValues::Map(HashMap::new()));
+
+    // Setup predefined variables
+    if let Some(predefined_variables) = args.predefined_variables {
+        let var_file = predefined_variables.as_path();
+        let contents = fs::read_to_string(var_file).unwrap();
+        let values: Value = serde_json::from_str(&contents).unwrap();
+        match values.as_array() {
+            Some(content) => {
+                for var in content.iter() {
+                    match build_ast_root(var.as_str().unwrap()) {
+                        Ok(root) => {
+                            root.print("");
+                            match root.evaluate() {
+                                Ok(val) => {
+                                    println!("{}: {}", var, val.get_value());
+                                }
+                                Err(e) => {
+                                    println!("Error when parsing {}", var);
+                                    eprintln!("Error: {}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            println!("Can't create AST from {}", var);
+                            eprintln!("Error: {}", e);
+                        }
+                    }
+                }
+            }
+            None => {
+                println!("Resuming without variables");
+                eprintln!("Error: Wrong file format");
+            }
+        }
+        println!("Variables: {:?}", get_variable_map_instance());
     }
 
     println!("Connecting at {}", ip_addr);
@@ -77,12 +129,6 @@ fn main() {
 
     thread_ids.push(event_thread);
     thread_names.lock().unwrap().push("event".to_string());
-
-    // Setup persistent keystore
-    set_var!("keystore", VarValues::Array(vec![]));
-
-    // Setup persistent Hashmap
-    set_var!("map", VarValues::Map(HashMap::new()));
 
     // Run through all files in directory dir and print their paths
     for entry in fs::read_dir(dir).unwrap() {
@@ -164,7 +210,7 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
         let path = file.unwrap().path();
         let def_file: Value = serde_json::from_str(fs::read_to_string(&path).unwrap().as_str()).unwrap();
         let name = path.file_name().unwrap().to_str().unwrap();
-        //println!("File: {}", name);
+        // println!("File: {:?}", serde_json::to_string_pretty(&def_file).unwrap());
 
         // Ignore events not triggered by the event or on the wrong chain
         if property.src_chain.clone().unwrap().to_lowercase() == "ethereum" {
@@ -176,7 +222,7 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
                     continue;
                 }
             }
-        } else {   
+        } else {   // Non Ethereum Chains
             if def_file.get("event").unwrap().as_str().unwrap() != event 
             || def_file.get("chain_name").unwrap().as_str().unwrap().to_lowercase() != property.src_chain.clone().unwrap().to_lowercase() {
                 //println!("Continuing...");
@@ -216,7 +262,8 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
         let val = root.evaluate();
         match val {
             Ok(v) => {
-                let ret: bool = v.get_value().parse().unwrap();     
+                let ret: bool = v.get_value().parse().unwrap();    
+                println!("{}", ret); 
                         // Save result
                 if ret {
                     println!("{} transaction: {} From: {}", "Allow".green(), property.transaction_hash.clone().unwrap(), name.yellow());
@@ -259,6 +306,11 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
 
     // Clear all non persistent variables
     let map = get_variable_map_instance();
+    /*
+    * This removes all variables generated during the call of the property.
+    * Some Variables however are needed to be kept for future calls of the property.
+    * They can be defined here.
+     */
     map.retain(|k, _| *k == "keystore" || *k == "map" || k.contains("_contract"));
 
     println!("Variables: {:?}", get_variable_map_instance());

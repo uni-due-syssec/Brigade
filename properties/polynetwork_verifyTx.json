@@ -1,0 +1,11 @@
+{
+    "event": "0x8a4a2663ce60ce4955c595da2894de0415240f1ace024cfbff85f513b656bdae",
+    "chain_name": "ethereum",
+    "properties": {
+        "to_contract": "$event_data.slice(322, 362).as(hex)",
+        "contract_address": "$to_contract.as(address).toLower()"
+    },
+    "pattern": [
+        "$keystore.contains($contract_address) == false"
+    ]
+}
