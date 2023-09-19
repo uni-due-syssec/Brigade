@@ -1,3 +1,4 @@
 [
-    "$keystore.push(0x071b8f8f375a1932baaf356bca98aac0128bf5bf)"
+    "$keystore.push(0x071b8f8f375a1932baaf356bca98aac0128bf5bf)",
+    "$map.insert(bsc_height, 0)"
 ]
