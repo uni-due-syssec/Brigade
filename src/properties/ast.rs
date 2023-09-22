@@ -1216,9 +1216,9 @@ impl ASTNode {
                         let value = args[1].evaluate()?;
                         match set {
                             ASTConstant::Array(arr)=> {
-                                println!("{}\n{}", arr.len(), value.get_value());
+                                // println!("{}\n{}", arr.len(), value.get_value());
                                 for element in arr {
-                                    println!("{}", element.get_value());
+                                    // println!("{}", element.get_value());
                                     if element.get_value() == value.get_value() {
                                         
                                         return Ok(ASTConstant::Bool(true));
@@ -1258,7 +1258,9 @@ impl ASTNode {
                                     ASTConstant::Array(value) => {
                                         Ok(ASTConstant::Array(value.clone()))
                                     },
-                                    ASTConstant::Map(_) => panic!("Can't get index of unindexed HashMap"),
+                                    ASTConstant::Map(m) => {
+                                        Ok(ASTConstant::Map(m.clone()))
+                                    },
                                 }
                             },
                             _ => Err(ASTError::InvalidFunctionInvocation("at".to_owned())),
@@ -1441,7 +1443,7 @@ impl ASTNode {
                         let mut hasher = sha3::Keccak256::digest(concatenated_bytes).to_vec();
                         let hex_string = hasher.iter().map(|&num| format!("{:02x}",num)).collect::<Vec<String>>().join("");
                         let s = "0x".to_string() + &hex_string;
-                        println!("Keccak256: {}", s);
+                        // println!("Keccak256: {}", s);
                         Ok(ASTConstant::String(s))
 
                     },
@@ -2011,7 +2013,7 @@ pub fn shunting_yard_algorithm(tokens: Vec<String>) -> Result<VecDeque<String>, 
         }
         output_queue.push_back(val);
     }
-    println!("Output Queue: {:?}", output_queue);
+    // println!("Output Queue: {:?}", output_queue);
 
     Ok(output_queue)
 }
@@ -2281,9 +2283,11 @@ fn max_encoded_length(t: &ASTConstant) -> usize {
 
 #[cfg(test)]
 mod test_ast{
+    use std::hash::Hash;
+
     use ethnum::AsU256;
 
-    use crate::properties::ast::*;
+    use crate::properties::{ast::*, environment::print_variables};
     
     #[test]
     fn test_tokenizer() {
@@ -2954,6 +2958,24 @@ mod test_ast{
         let new_val = new_command.evaluate().unwrap();
         println!("{}", new_val.get_value());
         assert_eq!(new_val.get_value(), "HELLO");
+
+    }
+
+    #[test]
+    fn test_map_get() {
+        let mut map: HashMap<String, VarValues> = HashMap::new();
+
+        map.insert("programId".to_string(), "Fg1PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS".into());
+        map.insert("data".to_string(), "p3wW1xWC25pYgYq1pcMV2Ei1dL".into());
+        map.insert("accounts".to_string(), ["5aAj94L1nFJSDhYGSk4eQuU9QTECAAmyY8uRAHiLQty8", "CCBmdp8sgzxRveNYNDH28ryDqxYshZRkNHbAnGmFLKBK", "HPGi8BkURt5FKTpni2HNh5b2Foa3yDhSBGwJvjdLrACk"].into());
+
+        set_var!("map", VarValues::Map(map));
+
+        print_variables(&get_variable_map_instance());
+
+        let root = build_ast_root("$map.get(accounts)").unwrap();
+        let val = root.evaluate().unwrap();
+        println!("{}", val.get_value());
 
     }
 }

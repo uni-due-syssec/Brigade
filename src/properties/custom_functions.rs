@@ -54,12 +54,12 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
         if value.as_str().unwrap().starts_with('$'){
             //  Only Parse the variables 
             let v = value.as_str().unwrap();
-            println!("{}: {}", variable_name, v);
+            // println!("{}: {}", variable_name, v);
             match crate::build_ast_root(v){
                 Ok(root) => {
                     match root.evaluate(){
                         Ok(r) => {
-                            println!("Evaluated: {} to {:?}", variable_name, r);
+                            // println!("Evaluated: {} to {:?}", variable_name, r);
                             set_var!(variable_name, r);
                         },
                         Err(e) => {
@@ -77,11 +77,11 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
 
         if !value.as_str().unwrap().contains('.') && !value.as_str().unwrap().contains('$'){
             set_var!(variable_name, value.clone());
-            println!("{}: {}", variable_name, value.as_str().unwrap());
+            // println!("{}: {}", variable_name, value.as_str().unwrap());
             continue;
         }
 
-        println!("{:?} {:?}", variable_name, value.as_str().unwrap());
+        // println!("{:?} {:?}", variable_name, value.as_str().unwrap());
         let tokens = tokenize(value.as_str().unwrap().to_string());
         //let p = value.as_str().unwrap().split('.');
         let func: Vec<&str> = tokens.iter().map(|s| s.as_str()).collect();
@@ -156,7 +156,7 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
                     match root.evaluate() {
                         Ok(val) => {
                             s = val.get_value().to_string();
-                            println!("Variable: {}", s);
+                            // println!("Variable: {}", s);
                         },
                         Err(e) => {
                             println!("Variable error: {}", e);
@@ -200,14 +200,14 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
         let client = reqwest::blocking::Client::new();
         let res = client.post(&config.get_http_url()).json(&function_json).send().unwrap();
         let body = res.text().unwrap();
-        println!("{:?}", body);
+        // println!("{:?}", body);
         let result:Value = serde_json::from_str(&body.as_str()).unwrap();
         // println!("Result: {}", serde_json::to_string_pretty(&result).unwrap());
 
         let path_to_val: Vec<&str> = fieldname.split(".").collect();
         
         if let Some(v) = find_value_by_path(&result, &path_to_val){
-            println!("{} = {}", fieldname, v);
+            // println!("{} = {}", fieldname, v);
             if field_and_type.len() == 3{
                 let fieldtype = field_and_type[2];
                 match fieldtype {
@@ -265,8 +265,9 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
                     }
                 }
             }else{
+                // println!("Key: {}, Value: {}", variable_name, v);
                 results.insert(variable_name.to_string(), v.clone());
-                set_var!(variable_name, v.as_str().unwrap());
+                set_var!(variable_name, v);
             }
         } else {
             println!("Could not find {} for key {}", result, fieldname);
@@ -274,7 +275,7 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
         }
     }
 
-    println!("Variables: {:?}", get_variable_map_instance());
+    print_variables(&get_variable_map_instance());
 
     Ok(results)
 }

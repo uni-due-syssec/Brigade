@@ -1,6 +1,7 @@
 use configs::ChainConfig;
 use ethnum::{u256, i256};
 use owo_colors::OwoColorize;
+use owo_colors::colors::css::DarkCyan;
 use properties::Properties;
 use properties::custom_functions::execute_custom_function;
 use sockets::event_socket::{Event, BlockingQueue, Allowance};
@@ -173,7 +174,7 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
         if key.to_string() == "block_number"{
             let bn = property.src_chain.clone().unwrap() + "_" + key;
             let v = &value.as_str().unwrap()[5..];
-            println!("{}: {}", bn, v);
+            // println!("{}: {}", bn, v);
             set_var!(bn, u256::from_str(v).unwrap());
             continue;
         }
@@ -189,7 +190,8 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
         }
     }
 
-    println!("Variables: {:?}", list_variables(get_variable_map_instance()));
+    // Print the variables before the properties are processed
+    // print_variables(&get_variable_map_instance());
 
     // Which Event?
     let event = property.occured_event.clone().unwrap();
@@ -263,7 +265,7 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
         match val {
             Ok(v) => {
                 let ret: bool = v.get_value().parse().unwrap();    
-                println!("{}", ret); 
+                println!("Pattern: {}", ret.fg::<DarkCyan>()); 
                         // Save result
                 if ret {
                     println!("{} transaction: {} From: {}", "Allow".green(), property.transaction_hash.clone().unwrap(), name.yellow());
@@ -313,7 +315,7 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
      */
     map.retain(|k, _| *k == "keystore" || *k == "map" || k.contains("_contract"));
 
-    println!("Variables: {:?}", get_variable_map_instance());
+    print_variables(&map);
 
     // Check all results and only allow when all are true
     if results.iter().all(|x| *x) {

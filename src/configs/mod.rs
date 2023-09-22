@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize, Deserializer};
 use serde_json::{json, Value};
 use ws::Result;
 
-use crate::{sockets::{self, socket, ethereum_socket}, properties::Properties};
+use crate::{sockets::{self, socket, ethereum_socket, solana_socket}, properties::Properties};
 
 mod ethereum_config;
 
@@ -58,10 +58,10 @@ impl ChainConfig {
     }
 
     pub fn connect(&self, event_channel: Sender<Properties>) -> Result<()> {
-        if self.name.to_lowercase() == "ethereum"{
-            self.connect_ethereum(event_channel)
-        } else {
-            self.connect_generic(event_channel)
+        match self.name.to_lowercase().as_str() {
+            "solana" => self.connect_solana(event_channel),
+            "ethereum" => self.connect_ethereum(event_channel),
+            _ => self.connect_generic(event_channel),
         }
     }
 
@@ -83,6 +83,24 @@ impl ChainConfig {
             socket::WebSocketClientHandler::new(
                 // State of the Client
                 self.name.clone(),out, vec![])
+        }).unwrap();
+        
+        Ok(())
+    }
+
+    fn connect_solana(&self, event_channel: Sender<Properties>) -> Result<()> {
+        ws::connect(self.rpc_url.clone(), |out| {
+            // Request subscription for Chain Events
+            let request = json!({
+                "jsonrpc": "2.0",
+                "method": self.get_subscription_method(),
+                "params": self.filter,
+                "id": 1
+            });
+
+            out.send(request.to_string()).unwrap();
+
+            solana_socket::SolanaSocketHandler::new(out, vec![], event_channel.to_owned(), self.get_http_url().clone())
         }).unwrap();
         
         Ok(())

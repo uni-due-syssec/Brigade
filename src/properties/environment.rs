@@ -7,6 +7,7 @@ use std::sync::Once;
 use super::ast::{ASTNode, ASTConstant};
 
 use ethnum::{u256, i256, AsI256, AsU256};
+use owo_colors::{OwoColorize, colors::{css::{LightGray, DarkGray, LightYellow}, xterm::{LightCaribbeanGreen, LightHollywoodCerise, LightAnakiwaBlue}}};
 use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -544,6 +545,8 @@ impl From<ASTConstant> for VarValues{
             ASTConstant::Number(s) => VarValues::Number(s),
             ASTConstant::SignedNumber(s) => VarValues::SignedNumber(s),
             ASTConstant::Bool(s) => VarValues::Bool(s),
+            ASTConstant::Array(s) => VarValues::from(s),
+            ASTConstant::Map(s) => VarValues::from(s),
             _ => VarValues::String(s.get_value()),
         }
     }
@@ -625,6 +628,12 @@ pub fn get_var<T: GetVar<T>>(map: &VariableMap, key: &str) -> Option<T> {
 
 pub fn list_variables(map: &VariableMap) -> Vec<String> {
     map.keys().cloned().collect()
+}
+
+pub fn print_variables(map: &VariableMap) {
+    for (key, value) in map {
+        println!("{}: {:?}", key.fg::<LightCaribbeanGreen>(), value.fg::<LightAnakiwaBlue>());
+    }
 }
 
 pub fn get_variable_map_instance() -> &'static mut VariableMap {

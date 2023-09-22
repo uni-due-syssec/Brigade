@@ -1,6 +1,6 @@
 use std::{path::PathBuf, str::FromStr, fs};
 
-use ethnum::u256;
+use ethnum::{u256, uint};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
@@ -81,13 +81,13 @@ impl Properties{
     pub fn serialize(&self) -> Value {
         serde_json::json!({
             "payer_address": self.payer_address,
-            "payer_balance_before": format!("u256:{}", self.payer_balance_before.unwrap()),
-            "payer_balance_after": format!("u256:{}", self.payer_balance_after.unwrap()),
-            "block_number": format!("u256:{}",self.block_number.unwrap()),
+            "payer_balance_before": format!("u256:{}", self.payer_balance_before.unwrap_or(uint!("0"))),
+            "payer_balance_after": format!("u256:{}", self.payer_balance_after.unwrap_or(uint!("0"))),
+            "block_number": format!("u256:{}",self.block_number.unwrap_or(uint!("0"))),
             "occured_event": self.occured_event,
             "src_chain": self.src_chain,
             "transaction_hash": self.transaction_hash,
-            "value": format!("u256:{}",self.value.unwrap())
+            "value": format!("u256:{}",self.value.unwrap_or(uint!("0")))
         })
     }
 }
