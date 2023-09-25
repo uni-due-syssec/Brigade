@@ -1,0 +1,14 @@
+Step;Duration;Description
+Program Start;09:09:06;0
+EVENT: signature is verified;Solana: Event received;26786
+EVENT: signature is verified;Solana: Event forwarded to Event Channel;26791
+Event Received;solana: Event EVENT: signature is verified Received;26791
+Begin Pattern Parsing;solana: Parse Pattern for EVENT: signature is verified;26978
+End Pattern Parsing;solana: Parsed Pattern for EVENT: signature is verified;26979
+Processed Event;solana: Event EVENT: signature is verified Processed;26981
+EVENT: signature is verified;Solana: Event received;149612
+EVENT: signature is verified;Solana: Event forwarded to Event Channel;149619
+Event Received;solana: Event EVENT: signature is verified Received;149619
+Begin Pattern Parsing;solana: Parse Pattern for EVENT: signature is verified;150121
+End Pattern Parsing;solana: Parsed Pattern for EVENT: signature is verified;150123
+Processed Event;solana: Event EVENT: signature is verified Processed;150124

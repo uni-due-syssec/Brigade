@@ -32,3 +32,4 @@ ethnum = { version = "1.3.2", features = ["serde", "macros"] }
 owo-colors = "3.5.0"
 hex = "0.4.3"
 clap = { version = "4.3.21", features = ["derive"] }
+chrono = "0.4"

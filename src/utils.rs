@@ -1,3 +1,6 @@
+use std::{fs::{File, OpenOptions}, mem::MaybeUninit, sync::Once, path::Path, time::Instant, io::Write};
+
+use chrono::{DateTime, Local, Datelike, Timelike};
 use ethnum::{u256, uint, i256, int};
 
 use crate::properties::Properties;
@@ -86,6 +89,71 @@ pub fn get_ethereum_topic_ids(event_header: &str) -> String {
     let s = "0x".to_string() + &hex_string;
     //println!("{}", s);
     s
+}
+
+/// Get Startup instant
+pub fn get_startup_time() -> &'static mut Instant {
+    static mut MAYBE: MaybeUninit<Instant> = MaybeUninit::uninit();
+    static ONLY: std::sync::Once = Once::new();
+
+    unsafe{
+        ONLY.call_once(|| {
+            MAYBE.write(Instant::now());
+        });
+        MAYBE.assume_init_mut()
+    }
+}
+
+/// Get the handle of the log file
+pub fn get_log_file() -> &'static mut File {
+    static mut MAYBE: MaybeUninit<File> = MaybeUninit::uninit();
+    static ONLY: std::sync::Once = Once::new();
+
+    unsafe{
+        ONLY.call_once(|| {
+            let mut f: File;
+            let current_datetime: DateTime<Local> = Local::now();
+            let year = current_datetime.year();
+            let month = current_datetime.month();
+            let day = current_datetime.day();
+            let hour = current_datetime.hour();
+            let minute = current_datetime.minute();
+            let second = current_datetime.second();
+            let date_time = format!("{}-{:02}-{:02}_{:02}_{:02}_{:02}", year, month, day, hour, minute, second);
+            let path_rel = format!("logs/{}.log", date_time);
+
+            let temp = File::create(path_rel.clone());
+            match temp {
+                Ok(file) => f = file,
+                Err(e) => {
+                    panic!("Could not create log file {}: {}", path_rel, e);
+                }
+            }
+            let header = "Step;Description;Duration\n";
+            match f.write_all(header.as_bytes()){
+                Ok(_) => {},
+                Err(e) => {
+                    panic!("Could not write header to log file: {}", e);
+                }
+            }
+            
+            // match Path::new(&path_rel).canonicalize() {
+            //     Ok(path) => {
+            //         match OpenOptions::new().create(true).append(true).open(path.clone()) {
+            //             Ok(file) => f = file,
+            //             Err(e) => {
+            //                 panic!("Could not open log file{}: {}", path.to_str().unwrap(), e);
+            //             }
+            //         }   
+            //     },
+            //     Err(e) => {
+            //         panic!("Could not open log file {}: {}", path_rel, e);
+            //     }
+            // }
+            MAYBE.write(f);
+        });
+        MAYBE.assume_init_mut()
+    }
 }
 
 #[test]

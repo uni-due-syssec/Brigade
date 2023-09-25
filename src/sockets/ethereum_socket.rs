@@ -4,8 +4,9 @@ use serde_json::Value;
 use ws::Handler;
 use reqwest::blocking::Client;
 
+use crate::utils::get_startup_time;
 use crate::{properties::Properties, utils, message_formats::ethereum_message::*, set_var};
-use crate::VarValues;
+use crate::{VarValues, log_timestamp};
 use crate::get_variable_map_instance;
 
 /// Ethereum Websocket Handler
@@ -48,8 +49,11 @@ impl EthereumSocketHandler {
 
             let block_number = utils::hex_string_to_u256(ethereum_msg.params.result.block_number.clone().as_str());
             self.properties[index].block_number = Some(block_number);
-            self.properties[index].occured_event = Some(ethereum_msg.params.result.topics[0].clone());
+            let event = ethereum_msg.params.result.topics[0].clone();
+            self.properties[index].occured_event = Some(event.clone());
             self.properties[index].src_chain = Some(self.chain_name.clone());
+
+            log_timestamp(event.clone().as_str(), get_startup_time().elapsed(), "Ethereum: Event received");
             
             // println!("Ethereum Message: {}", ethereum_msg);
             
@@ -118,6 +122,8 @@ r#"{{
 
             // println!("Properties full: {:?}", self.properties[index]);
             self.event_channel.send(self.properties[index].clone()).unwrap();
+            log_timestamp(event.as_str(), get_startup_time().elapsed(), "Ethereum: Event forwarded to Event Channel");
+
         }else if let Ok(ethereum_confirm_msg) = serde_json::from_value::<EthereumConfirmMessage>(message.clone()) {
             println!("Ethereum Confirm Message: {}", ethereum_confirm_msg);
         }else{

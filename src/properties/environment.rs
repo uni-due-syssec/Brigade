@@ -7,7 +7,7 @@ use std::sync::Once;
 use super::ast::{ASTNode, ASTConstant};
 
 use ethnum::{u256, i256, AsI256, AsU256};
-use owo_colors::{OwoColorize, colors::{css::{LightGray, DarkGray, LightYellow}, xterm::{LightCaribbeanGreen, LightHollywoodCerise, LightAnakiwaBlue}}};
+use owo_colors::{OwoColorize, colors::xterm::{LightCaribbeanGreen, LightAnakiwaBlue}};
 use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq)]
