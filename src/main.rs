@@ -11,7 +11,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{Write, Read, ErrorKind};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, self};
+use std::sync::atomic::{AtomicBool, self, AtomicU64};
 use std::sync::mpsc::{Sender, Receiver};
 use std::time::{Instant, Duration};
 use std::{fs, path::Path};
@@ -28,7 +28,7 @@ use clap::Parser;
 
 use chrono::{Local, DateTime, Datelike, Timelike};
 
-use crate::utils::get_startup_time;
+use crate::utils::{get_startup_time, Evaluation};
 
 mod configs;
 mod sockets;
@@ -37,6 +37,7 @@ mod properties;
 mod utils;
 
 static LOG_TIMESTAMPS: AtomicBool = AtomicBool::new(false);
+static LAST_ID: AtomicU64 = AtomicU64::new(0);
 
 /// Arguments to the program
 #[derive(Parser, Debug)]
@@ -82,7 +83,6 @@ fn main() {
     let second = current_datetime.second();
     let date_time = format!("{:02}:{:02}:{:02}", hour, minute, second);
     let startup_time = get_startup_time();
-    log_timestamp("Program Start", Duration::from_secs(0), &date_time);
 
     // Setup persistent keystore
     set_var!("keystore", VarValues::Array(vec![]));
@@ -144,9 +144,7 @@ fn main() {
         // Event Loop
         loop {
             let property = rx.recv().unwrap();
-            log_timestamp("Event Received", get_startup_time().elapsed(), format!("{}: Event {} Received", property.src_chain.clone().unwrap_or("Couldn't unwrap".to_string()), property.occured_event.clone().unwrap_or("Couldn't unwrap".to_string())).as_str());
             event_loop(property.clone(), event_queue.clone());
-            log_timestamp("Processed Event", get_startup_time().elapsed(), format!("{}: Event {} Processed", property.src_chain.clone().unwrap_or("Couldn't unwrap".to_string()), property.occured_event.clone().unwrap_or("Couldn't unwrap".to_string())).as_str());
         }
 
         handle1.join().unwrap();
@@ -185,11 +183,14 @@ fn main() {
     for thread_id in thread_ids {
         thread_id.join().unwrap();
     }
-
-    log_timestamp("Progam End", startup_time.elapsed(), "ended");
 }
 
 fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> bool {
+
+    let mut ev: Evaluation = Evaluation::default();
+    ev.id = LAST_ID.load(atomic::Ordering::Relaxed);
+    LAST_ID.store(ev.id + 1, atomic::Ordering::Relaxed);
+    let now = Instant::now();
     
     // Build generic Variables from property description
     let prp = property.serialize();
@@ -222,6 +223,8 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
     println!("Event: {}", event.blue());
     println!("Transaction Hash: {}", property.transaction_hash.clone().unwrap().blue());
     println!("Chain: {}", property.src_chain.clone().unwrap().blue());
+
+    ev.event_type = event.clone();
 
     // Results of the separate files
     let mut results: Vec<bool> = vec![];
@@ -274,7 +277,7 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
         //         set_var!(key, value);
         //     }
         // }
-        log_timestamp("Begin Pattern Parsing", get_startup_time().elapsed(), format!("{}: Parse Pattern for {}", property.src_chain.clone().unwrap_or("Couldn't unwrap".to_string()), event.clone().as_str()).as_str());
+
         // parse pattern into AST
         let pattern = def_file.get("pattern").unwrap().as_array().unwrap();
         // Transform all patterns into one large string
@@ -307,10 +310,11 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
                 results.push(false);
             }
         }
-        
-        log_timestamp("End Pattern Parsing", get_startup_time().elapsed(), format!("{}: Parsed Pattern for {}", property.src_chain.clone().unwrap_or("Couldn't unwrap".to_string()), event.clone().as_str()).as_str());
-
     }
+
+    ev.duration = now.elapsed().as_millis();
+    log_evaluation(ev);
+
     let is_allowed: Allowance = if results.iter().all(|x| *x) { 
         Allowance::Allow 
     } else {
@@ -407,19 +411,12 @@ fn setup_event_ws(addr: String, event_queue: Arc<BlockingQueue<Event>>) -> Resul
     Ok((connection_handler, event_handler))
 }
 
-/// If Logging is on, log the timestamp given to the function
-fn log_timestamp(event: &str, d: Duration, tag: &str) {
+/// Logging for evaluation
+fn log_evaluation(evaluation: utils::Evaluation) {
     if !LOG_TIMESTAMPS.load(atomic::Ordering::Relaxed) {
         return;
     }
-    let csv_string = format!("{};{};{}\n", event, tag, d.as_millis());
-    let mut f = utils::get_log_file();
-    match f.write_all(csv_string.as_bytes()) {
-        Ok(_) => {},
-        Err(e) => {
-            eprintln!("Error when writing to file: {}", e);
-        },
-    }
+    evaluation.store();
 }
 
 #[test]
@@ -480,14 +477,4 @@ fn test_receiving(){
     remote_thread2.join().unwrap();
     remote_thread3.join().unwrap();
 
-}
-
-#[test]
-fn test_log_timestamp () {
-    LOG_TIMESTAMPS.store(true, atomic::Ordering::Relaxed);
-    let d = Duration::from_secs(199);
-    log_timestamp("test", d, "test_tag");
-    log_timestamp("test", d, "test_tag");
-    log_timestamp("test", d, "test_tag");
-    log_timestamp("test", d, "test_tag");
 }

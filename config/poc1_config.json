@@ -1,0 +1,18 @@
+{
+    "name": "ethereum",
+    "rpc_url": "ws://127.0.0.1:8546",
+    "http_url": "http://127.0.0.1:8545",
+    "contract_address": "0x071b8f8f375A1932BAAF356BcA98aAC0128bf5bf",
+    "subscription_method": "eth_subscribe",
+    "filter": [
+      "logs",
+      {
+        "address": "0x071b8f8f375A1932BAAF356BcA98aAC0128bf5bf",
+        "topics": [
+          [
+            "0x39ec8c34d1f4c73d4ebf493f92d5b46dd846d044f51757896b739bf2d6d3f204"
+          ]
+        ]
+      }
+    ]
+  }

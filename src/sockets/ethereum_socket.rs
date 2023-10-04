@@ -6,7 +6,7 @@ use reqwest::blocking::Client;
 
 use crate::utils::get_startup_time;
 use crate::{properties::Properties, utils, message_formats::ethereum_message::*, set_var};
-use crate::{VarValues, log_timestamp};
+use crate::VarValues;
 use crate::get_variable_map_instance;
 
 /// Ethereum Websocket Handler
@@ -34,7 +34,7 @@ impl EthereumSocketHandler {
         if let Ok(ethereum_msg) = serde_json::from_value::<EthereumEventMessage>(message.clone()) {
 
             // Add event message params to the variables
-            println!("Message: {}", ethereum_msg);
+            // println!("Message: {}", ethereum_msg);
 
             let event_data = ethereum_msg.params.result.data.clone();
             if event_data.len() <= 2 {
@@ -52,8 +52,6 @@ impl EthereumSocketHandler {
             let event = ethereum_msg.params.result.topics[0].clone();
             self.properties[index].occured_event = Some(event.clone());
             self.properties[index].src_chain = Some(self.chain_name.clone());
-
-            log_timestamp(event.clone().as_str(), get_startup_time().elapsed(), "Ethereum: Event received");
             
             // println!("Ethereum Message: {}", ethereum_msg);
             
@@ -75,13 +73,13 @@ r#"{{
             let res = client.post(self.request_url.clone()).json(&request_body).send().unwrap();
 
             let body = res.text().unwrap();
-            let transaction_by_hash = serde_json::from_str::<EthereumTransactionByHash>(&body.as_str()).unwrap();
-
-            let tx_value = utils::hex_string_to_u256(transaction_by_hash.result.value.clone().as_str());
+            let transaction_by_hash: Value = serde_json::from_str(&body.as_str()).unwrap();
+            let transaction_value = transaction_by_hash.get("result").unwrap().get("value").unwrap();
+            let tx_value = utils::hex_string_to_u256(transaction_value.as_str().unwrap());
             self.properties[index].value = Some(tx_value);
-            self.properties[index].payer_address = Some(transaction_by_hash.result.from.clone());
+            self.properties[index].payer_address = Some(transaction_by_hash.get("result").unwrap().get("from").unwrap().as_str().unwrap().to_string());
             // Get Current Block as decimal u64
-            let current_block = utils::hex_string_to_u64(transaction_by_hash.result.block_number.as_str());
+            let current_block = utils::hex_string_to_u64(transaction_by_hash.get("result").unwrap().get("blockNumber").unwrap().as_str().unwrap());
 
             let get_balance_at_block = format!(
 r#"{{
@@ -90,7 +88,7 @@ r#"{{
     "params": ["{}","{}"],
     "id": {} 
 }}"#,
-                transaction_by_hash.result.from.clone(),
+                self.properties[index].payer_address.clone().unwrap(),
                 utils::u64_to_hex_string(current_block),
                 index
             );
@@ -109,7 +107,7 @@ r#"{{
     "params": ["{}","{}"],
     "id": {} 
 }}"#,
-                transaction_by_hash.result.from.clone(),
+                self.properties[index].payer_address.clone().unwrap(),
                 utils::u64_to_hex_string(current_block-1),
                 index
             );
@@ -122,7 +120,6 @@ r#"{{
 
             // println!("Properties full: {:?}", self.properties[index]);
             self.event_channel.send(self.properties[index].clone()).unwrap();
-            log_timestamp(event.as_str(), get_startup_time().elapsed(), "Ethereum: Event forwarded to Event Channel");
 
         }else if let Ok(ethereum_confirm_msg) = serde_json::from_value::<EthereumConfirmMessage>(message.clone()) {
             println!("Ethereum Confirm Message: {}", ethereum_confirm_msg);

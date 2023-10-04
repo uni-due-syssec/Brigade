@@ -7,7 +7,7 @@ use reqwest::blocking::Client;
 
 use crate::utils::get_startup_time;
 use crate::{properties::Properties, utils, message_formats::ethereum_message::*, set_var};
-use crate::{VarValues, log_timestamp};
+use crate::VarValues;
 use crate::get_variable_map_instance;
 
 use crate::message_formats::solana_message::*;
@@ -49,8 +49,6 @@ impl SolanaSocketHandler {
                     // Event was found
                     let event = &event_content[13..];
                     self.properties[index].occured_event = Some(event.to_string());
-
-                    log_timestamp(event, get_startup_time().elapsed(), "Solana: Event received");
 
                     // concat logs as event data
                     let event_data = msg.params.result.value.logs.concat();
@@ -103,7 +101,6 @@ impl SolanaSocketHandler {
 
                         // Send the Event to the Event Channel
                         self.event_channel.send(self.properties[index].clone()).unwrap();
-                        log_timestamp(event, get_startup_time().elapsed(), "Solana: Event forwarded to Event Channel");
                         
                     } else {
                         println!("Wrong Transaction Message Format");

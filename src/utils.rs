@@ -1,4 +1,4 @@
-use std::{fs::{File, OpenOptions}, mem::MaybeUninit, sync::Once, path::Path, time::Instant, io::Write};
+use std::{fs::{File, OpenOptions}, mem::MaybeUninit, sync::Once, path::Path, time::{Instant, Duration}, io::Write};
 
 use chrono::{DateTime, Local, Datelike, Timelike};
 use ethnum::{u256, uint, i256, int};
@@ -129,7 +129,7 @@ pub fn get_log_file() -> &'static mut File {
                     panic!("Could not create log file {}: {}", path_rel, e);
                 }
             }
-            let header = "Step;Description;Duration\n";
+            let header = "ID;Event;Duration;Pattern Duration\n";
             match f.write_all(header.as_bytes()){
                 Ok(_) => {},
                 Err(e) => {
@@ -161,4 +161,26 @@ fn test_topic_ids_ethereum(){
     let event_header = "Deposit(uint8,bytes32,uint64)";
     let topic_id = get_ethereum_topic_ids(event_header);
     println!("{}", topic_id);
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Evaluation {
+    pub id: u64,
+    pub event_type: String,
+    pub duration: u128,
+    pub pattern_duration: u128,
+}
+
+impl Evaluation {
+    pub fn store(&self) -> bool {
+        let csv_string = format!("{};{};{};{}\n", self.id, self.event_type, self.duration, self.pattern_duration);
+        let mut f = get_log_file();
+        match f.write_all(csv_string.as_bytes()) {
+            Ok(_) => {return true},
+            Err(e) => {
+                eprintln!("Error when writing to file: {}", e);
+                return false
+            },
+        }
+    }
 }
