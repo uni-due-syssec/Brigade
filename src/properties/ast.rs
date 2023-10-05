@@ -2977,5 +2977,13 @@ mod test_ast{
         let val = root.evaluate().unwrap();
         println!("{}", val.get_value());
 
+        print_variables(&get_variable_map_instance());
+
+        let root = build_ast_root("$map.insert(programId, AAAAAAAAAAAAAAAA)").unwrap();
+        let val = root.evaluate().unwrap();
+        println!("{}", val.get_value());
+
+        print_variables(&get_variable_map_instance());
+
     }
 }

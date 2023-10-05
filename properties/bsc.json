@@ -2,12 +2,12 @@
     "event": "0x36afdaf439a8f43fe72135135d804ae620b37a474f0943b5b85f6788312cad40",
     "chain_name": "ethereum",
     "properties": { 
-        "last_height": "$map.get(bsc_height).as(u256)",
+        "last_height": "$map.get(bsc_height)",
         "current_height_string": "ethereum.get_transaction_by_hash($transaction_hash).result.input",
         "current_height": "$current_height_string.slice(139, 203).as(u256)"
     },
     "pattern": [
-        "$last_height <= $current_height",
+        "$last_height < $current_height",
         "$map.insert(bsc_height, $current_height)"
     ]
 }
