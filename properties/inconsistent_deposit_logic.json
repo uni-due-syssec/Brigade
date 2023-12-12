@@ -1,5 +1,5 @@
 {
-    "event": "InconsistentDepositLogic(uint256,string,uint256)",
+    "event": "OUTInconsistentDepositLogic(uint256,string,uint256)",
     "chain_name": "ethereum",
     "properties": { 
         "balance_after": "ethereum.get_balance($payer_address, $ethereum_block_number.as(hex)).result",
