@@ -1,0 +1,10 @@
+{
+    "event": "PrivilegedEvent()",
+    "chain_name": "ethereum",
+    "properties": { 
+    },
+    "pattern": [
+        "assign(privileged_account, 0xACCADD6355000000000000000000000000000000)",
+        "$payer_address == $privileged_account"
+    ]
+}

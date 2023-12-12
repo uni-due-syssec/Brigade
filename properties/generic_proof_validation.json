@@ -1,0 +1,10 @@
+{
+    "event": "Withdraw(uint256,string,uint256)",
+    "chain_name": "ethereum",
+    "properties": { 
+    },
+    "pattern": [
+       "$map.contains($event_data.slice(2,66).as(hex)) == true",
+       "$map.remove($event_data.slice(2,66).as(hex))"
+    ]
+}

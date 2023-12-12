@@ -1,0 +1,9 @@
+{
+    "event": "Deposit(uint256,string,uint256)",
+    "chain_name": "ethereum",
+    "properties": { 
+    },
+    "pattern": [
+       "$map.store($payer, $event_data.slice(2,66).as(hex))"
+    ]
+}
