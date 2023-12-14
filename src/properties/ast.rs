@@ -526,8 +526,9 @@ impl ASTNode {
                 let left = left.evaluate()?;
                 let left_clone = left.clone();
                 let right = right.evaluate()?;
+                let right_clone = right.clone();
                 match left {
-                    ASTConstant::String(l) => {
+                    ASTConstant::String(l) => { // Convert string to number
                         match right {
                             ASTConstant::Number(r) => {
                                 let val = left_clone.convert(ConversionTarget::Number).unwrap();
@@ -539,6 +540,13 @@ impl ASTNode {
                                 let val_node = ASTNode::ConstantSignedNumber(i256::from_str(val.get_value().as_str()).unwrap());
                                 ASTNode::BinaryArithmetic(operator.clone(), Box::new(val_node), Box::new(ASTNode::ConstantSignedNumber(r))).evaluate()
                             },
+                            ASTConstant::String(s) => {
+                                let val = left_clone.convert(ConversionTarget::Number).unwrap();
+                                let val_node = ASTNode::ConstantNumber(u256::from_str(val.get_value().as_str()).unwrap());
+                                let r_val = right_clone.convert(ConversionTarget::Number).unwrap();
+                                let r_val_node = ASTNode::ConstantNumber(u256::from_str(r_val.get_value().as_str()).unwrap());
+                                ASTNode::BinaryArithmetic(operator.clone(), Box::new(val_node), Box::new(r_val_node)).evaluate()
+                            }
                             _ => Err(ASTError::InvalidArithmeticOperator(operator.to_string().to_owned())),
                         }
                     }
