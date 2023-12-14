@@ -10,7 +10,8 @@
         "address": "0x071b8f8f375A1932BAAF356BcA98aAC0128bf5bf",
         "topics": [
           [
-            "0x39ec8c34d1f4c73d4ebf493f92d5b46dd846d044f51757896b739bf2d6d3f204"
+            "0x39ec8c34d1f4c73d4ebf493f92d5b46dd846d044f51757896b739bf2d6d3f204",
+            "0x25d9ba23b0ca0ee654810c300fb909ccd157284b6d6f5b1b78a47bfa04771243"
           ]
         ]
       }

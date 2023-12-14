@@ -1,6 +1,7 @@
 
 use std::sync::mpsc::Sender;
 
+use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize, Deserializer};
 use serde_json::{json, Value};
 use ws::Result;

@@ -1,5 +1,5 @@
 {
-    "event": "Deposit(uint256,string,uint256)",
+    "event": "InconsistentToken(address,uint256,address)",
     "chain_name": "ethereum",
     "properties": { 
         "token_address": "$event_data.slice(2,66).as(hex)",
