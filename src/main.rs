@@ -263,7 +263,13 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
         checked_vec.push(name.clone().to_owned());
         
         // Execute Custom Functions and get Variables
-        let _ = execute_custom_function(&def_file).unwrap();
+        match execute_custom_function(&def_file){
+            Ok(_) => {},
+            Err(e) => {
+                println!("Error: {}", e);
+                return false;
+            }
+        }
 
         // for (key, value) in vars {
         //     if value.is_string() && value.as_str().unwrap().starts_with("u256:"){

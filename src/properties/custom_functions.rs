@@ -270,8 +270,7 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
                 set_var!(variable_name, v);
             }
         } else {
-            println!("Could not find {} for key {}", result, fieldname);
-            return Err(error::PropertyError::FieldNotFound);
+            return Err(error::PropertyError::FieldNotFound(fieldname.to_string(), result.to_string(), function_json.to_string()));
         }
     }
 

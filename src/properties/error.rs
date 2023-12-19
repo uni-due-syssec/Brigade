@@ -40,8 +40,8 @@ pub enum ASTError {
 pub enum PropertyError {
     #[error("the property is invalid")]
     InvalidProperty,  
-    #[error("the fieldname does not exist or an invalid response was returned")]
-    FieldNotFound, 
+    #[error("the fieldname {0} does not exist in response {1}.\nMaybe there is something wrong with the request? {2}")]
+    FieldNotFound(String, String, String), 
     #[error("the property is not found")]
     PropertyNotFound,
     #[error("cyclic dependencies detected")]

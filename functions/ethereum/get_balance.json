@@ -2,5 +2,5 @@
     "jsonrpc": "2.0",
     "method": "eth_getBalance",
     "params": ["$account","$blocknumber"],
-    "id": "$id" 
+    "id": "0" 
 }
