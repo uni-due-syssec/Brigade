@@ -145,6 +145,7 @@ impl Handler for EthereumSocketHandler {
     }
 
     fn on_open(&mut self, _shake: ws::Handshake) -> ws::Result<()> {
+        print!("{}\t", _shake.response.status());
         println!("Open Websocket for Ethereum");
         let msg = format!("{} opened", self.chain_name);
         Ok(())

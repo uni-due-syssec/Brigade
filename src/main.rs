@@ -139,7 +139,7 @@ fn main() {
     let event_thread = thread::spawn(move || {
         // Setup the Event Socket
         let event_queue: Arc<BlockingQueue<Event>> = Arc::new(BlockingQueue::new());
-        let (handle1, handle2) = setup_event_ws(ip_addr, event_queue.clone()).unwrap();
+        // let (handle1, handle2) = setup_event_ws(ip_addr, event_queue.clone()).unwrap();
 
         // Event Loop
         loop {
@@ -147,8 +147,8 @@ fn main() {
             event_loop(property.clone(), event_queue.clone());
         }
 
-        handle1.join().unwrap();
-        handle2.join().unwrap();
+        // handle1.join().unwrap();
+        // handle2.join().unwrap();
     });
 
     thread_ids.push(event_thread);
@@ -351,7 +351,7 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
 
 }
 
-// Setup a websocket thread acting as a broadcaster for events
+// Setup a TCP thread acting as a broadcaster for events
 fn setup_event_ws(addr: String, event_queue: Arc<BlockingQueue<Event>>) -> Result<(JoinHandle<()>, JoinHandle<()>), String> {
     
     // Build TCP Endpoint

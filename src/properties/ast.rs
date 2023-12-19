@@ -443,31 +443,40 @@ impl ASTNode {
             },
             ASTNode::Variable(name, _) =>{
                 if let Some(v) = get_var!(name){
-                    println!("{}└── {}: {}", prefix, name.blue(), v.get_value())
+                    match v.get_string(){
+                    None => println!("{}└── {}: {}", prefix, name.blue(), v.get_value()),
+                    Some(s) => {
+                        if let Ok(u) = u256::from_str_hex(s){
+                            println!("{}└── {}: {} ({})", prefix, name.blue(), u.green(), s.magenta());
+                        }else{
+                            println!("{}└── {}: {}", prefix, name.blue(), s);
+                        }
+                    }
+                    }
                 }else{
                     println!("{}└── {}: {}", prefix, "Variable".red(), name)
                 }
             },
             ASTNode::UnaryArithmetic(operator, value) => {
-                println!("{}└── {}: {}", prefix, "Arithmetic".fg_rgb::<156, 9, 95>(), operator.to_string());
+                println!("{}└── {}: {} Result: {}", prefix, "Arithmetic".fg_rgb::<156, 9, 95>(), operator.to_string(), self.evaluate().unwrap().get_value().green());
                 value.print(&format!("{}    ", prefix));
             },
             ASTNode::BinaryArithmetic(operator, left, right) => {
-                println!("{}└── {}: {}", prefix, "Arithmetic".fg_rgb::<156, 9, 95>(), operator.to_string());
+                println!("{}└── {}: {} Result: {}", prefix, "Arithmetic".fg_rgb::<156, 9, 95>(), operator.to_string(), self.evaluate().unwrap().get_value().green());
                 left.print(&format!("{}│   ", prefix));
                 right.print(&format!("{}    ", prefix));
             },
             ASTNode::UnaryLogic(operator, value) => {
-                println!("{}└── {}: {}", prefix, "Logic".fg_rgb::<112, 9, 156>(), operator.to_string());
+                println!("{}└── {}: {} Result: {}", prefix, "Logic".fg_rgb::<112, 9, 156>(), operator.to_string(), self.evaluate().unwrap().get_value().green());
                 value.print(&format!("{}    ", prefix));
             },
             ASTNode::BinaryLogic(operator, left, right) => {
-                println!("{}└── {}: {}", prefix, "Logic".fg_rgb::<112, 9, 156>(), operator.to_string());
+                println!("{}└── {}: {} Result: {}", prefix, "Logic".fg_rgb::<112, 9, 156>(), operator.to_string(), self.evaluate().unwrap().get_value().green());
                 left.print(&format!("{}│   ", prefix));
                 right.print(&format!("{}    ", prefix));
             },
             ASTNode::Function(func, args) => {
-                println!("{}└── {}: {}", prefix, "Function".cyan(), func.to_string());
+                println!("{}└── {}: {} Result: {}", prefix, "Function".cyan(), func.to_string(), self.evaluate().unwrap().get_value().green());
                 let last = args.len() - 1;
                 for (i, arg) in args.iter().enumerate() {
                     let new_prefix = if i == last { "   " } else { "│  " };

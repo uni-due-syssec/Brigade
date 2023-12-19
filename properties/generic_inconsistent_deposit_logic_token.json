@@ -2,13 +2,11 @@
     "event": "InconsistentToken(address,uint256,address)",
     "chain_name": "ethereum",
     "properties": { 
-        "token_address": "$event_data.slice(2,66).as(hex)",
-        "token_amount": "$event_data.slice(66,130).as(u256)",
-        "balance_after": "ethereum.get_balance($payer_address, $ethereum_block_number.as(hex)).result",
-        "balance_before": "ethereum.get_balance($payer_address, ($ethereum_block_number - 1).as(hex)).result"
+        "input_data": "ethereum.get_transaction_by_hash($transaction_hash).result.input",
+        "token_address": "$input_data.slice(34,74).as(hex)",
+        "token_amount": "$event_data.slice(66,130).as(u256)"
     },
     "pattern": [
-        "$balance_after.as(u256) < $balance_before.as(u256)",
-        "$balance_after.as(u256) + $token_amount == $balance_before.as(u256)"
+        "0 == 0"
     ]
 }

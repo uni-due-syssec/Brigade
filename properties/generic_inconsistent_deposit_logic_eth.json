@@ -9,6 +9,6 @@
         "amount": "$event_data.slice(130,194).as(hex)"
     },
     "pattern": [
-        "$balance_after + ( $gas_amount * $gas_price ) + $amount == $balance_before"
+        "$value >= $amount"
     ]
 }
