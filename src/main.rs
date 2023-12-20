@@ -28,6 +28,7 @@ use clap::Parser;
 
 use chrono::{Local, DateTime, Datelike, Timelike};
 
+use crate::properties::talon::TalonFile;
 use crate::utils::{get_startup_time, Evaluation};
 
 mod configs;
@@ -216,7 +217,7 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
     }
 
     // Print the variables before the properties are processed
-    // print_variables(&get_variable_map_instance());
+    print_variables(&get_variable_map_instance());
 
     // Which Event?
     let event = property.occured_event.clone().unwrap();
@@ -232,6 +233,51 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
     let mut checked_vec: Vec<String> = vec![];
     // Which file was failed
     let mut fail_reason: Vec<String> = vec![];
+    process_json_properties(property.clone(), &mut results, &mut checked_vec, &mut fail_reason);
+
+    // process_talon_code(property.clone(), &mut results, &mut fail_reason);
+
+    ev.duration = now.elapsed().as_millis();
+    log_evaluation(ev);
+
+    let is_allowed: Allowance = if results.iter().all(|x| *x) { 
+        Allowance::Allow 
+    } else {
+        Allowance::Deny(fail_reason.clone())
+    };
+    let event = Event {
+        result: is_allowed,
+        checked: checked_vec,
+        chain: property.src_chain.clone().unwrap(),
+        transaction_hash: property.transaction_hash.clone().unwrap(),
+    };
+
+    event_queue.push(event);
+
+    // Clear all non persistent variables
+    let map = get_variable_map_instance();
+    /*
+    * This removes all variables generated during the call of the property.
+    * Some Variables however are needed to be kept for future calls of the property.
+    * They can be defined here.
+     */
+    map.retain(|k, _| *k == "keystore" || *k == "map" || k.contains("_contract"));
+
+    print_variables(&map);
+
+    // Check all results and only allow when all are true
+    if results.iter().all(|x| *x) {
+        println!("{} transaction: {}", "Allow".green(), property.transaction_hash.clone().unwrap());
+        true
+    }else {
+        println!("{} transaction: {}", "Deny".red(), property.transaction_hash.clone().unwrap());
+        false
+    }
+
+}
+
+fn process_json_properties(property: Properties, results: &mut Vec<bool>, checked_vec: &mut Vec<String>, fail_reason: &mut Vec<String>) -> bool{
+    let event = property.occured_event.clone().unwrap();
     //println!("Dir_len {}", fs::read_dir("properties").unwrap().count());
     // Find Property Files which are triggered by the Event and the chain
     for file in fs::read_dir("properties").unwrap() {
@@ -290,72 +336,110 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
         let processed_pattern = pattern.iter().map(|p| p.as_str().unwrap().to_string()).collect::<Vec<String>>().join(" && ");
         // println!("Pattern: {}", processed_pattern);
 
-        let root = build_ast_root(processed_pattern.as_str()).unwrap();
-        root.print("");
 
-        // Evaluate AST
-        let val = root.evaluate();
-        match val {
-            Ok(v) => {
-                let ret: bool = v.get_value().parse().unwrap();    
-                println!("Pattern: {}", ret.fg::<DarkCyan>()); 
-                        // Save result
-                if ret {
-                    println!("{} transaction: {} From: {}", "Allow".green(), property.transaction_hash.clone().unwrap(), name.yellow());
-                    results.push(true);
-                } else {
-                    println!("{} transaction: {} From: {}", "Deny".red(), property.transaction_hash.clone().unwrap(), name.yellow());
-                    fail_reason.push(name.clone().to_string());
-                    results.push(false);
-                }   
-            }
+        match build_ast_root(&processed_pattern) {
+            Ok(root) => {
+                root.print("");
+
+                // Evaluate AST
+                let val = root.evaluate();
+                match val {
+                    Ok(v) => {
+                        let ret: String = v.get_value();    
+                        println!("Pattern: {}", ret.fg::<DarkCyan>()); 
+                                // Save result
+                        if ret == "true" {
+                            println!("{} transaction: {} From: {}", "Allow".green(), property.transaction_hash.clone().unwrap(), name.yellow());
+                            results.push(true);
+                        } else {
+                            println!("{} transaction: {} From: {}", "Deny".red(), property.transaction_hash.clone().unwrap(), name.yellow());
+                            fail_reason.push(name.clone().to_string());
+                            results.push(false);
+                        }   
+                    }
+                    Err(e) => {
+                        println!("{} transaction: {} From: {}", "Deny".red(), property.transaction_hash.clone().unwrap(), name.yellow());
+                        println!("Error: {}", e);
+                        fail_reason.push(name.clone().to_string());
+                        results.push(false);
+                    }
+                }
+            },
             Err(e) => {
-                println!("{} transaction: {} From: {}", "Deny".red(), property.transaction_hash.clone().unwrap(), name.yellow());
                 println!("Error: {}", e);
-                fail_reason.push(name.clone().to_string());
-                results.push(false);
+                return false;
             }
         }
     }
-
-    ev.duration = now.elapsed().as_millis();
-    log_evaluation(ev);
-
-    let is_allowed: Allowance = if results.iter().all(|x| *x) { 
-        Allowance::Allow 
-    } else {
-        Allowance::Deny(fail_reason.clone())
-    };
-    let event = Event {
-        result: is_allowed,
-        checked: checked_vec,
-        chain: property.src_chain.clone().unwrap(),
-        transaction_hash: property.transaction_hash.clone().unwrap(),
-    };
-
-    event_queue.push(event);
-
-    // Clear all non persistent variables
-    let map = get_variable_map_instance();
-    /*
-    * This removes all variables generated during the call of the property.
-    * Some Variables however are needed to be kept for future calls of the property.
-    * They can be defined here.
-     */
-    map.retain(|k, _| *k == "keystore" || *k == "map" || k.contains("_contract"));
-
-    print_variables(&map);
-
-    // Check all results and only allow when all are true
-    if results.iter().all(|x| *x) {
-        println!("{} transaction: {}", "Allow".green(), property.transaction_hash.clone().unwrap());
-        true
-    }else {
-        println!("{} transaction: {}", "Deny".red(), property.transaction_hash.clone().unwrap());
-        false
-    }
-
+    return true;
 }
+
+fn process_talon_code(property: Properties, results: &mut Vec<bool>, fail_reason: &mut Vec<String>){
+
+    let event = property.occured_event.unwrap();
+
+    for file in fs::read_dir("rules").unwrap() {
+        let mut execute = false;
+        let path = file.unwrap().path();
+        match TalonFile::read_from_file(path.as_path()){
+            Ok(def_file) => {
+                // Found a valid file
+                // Check if the event matches
+                if event == def_file.event{
+                    println!("Found: {}", path.to_str().unwrap());
+                    // Execute the code
+                    execute = true;
+                }
+                if !execute{
+                    let hashed_event = utils::get_ethereum_topic_ids(def_file.event.as_str());
+                    if hashed_event != event{
+                        execute = true;
+                    }
+                    // Skip wrong events
+                    continue;
+                }
+
+                if execute {
+                    let rules = def_file.rules;
+                    let roots = build_code(&rules).unwrap();
+                    println!("Roots: {:?}", roots);
+                    for (l, root) in roots.iter().enumerate(){
+                        root.print("");
+                        // Evaluate AST
+                        let val = root.evaluate();
+                        match val {
+                            Ok(v) => {
+                                let ret: String = v.get_value();    
+                                println!("Rule: {}", ret.fg::<DarkCyan>()); 
+                                        // Save result
+                                if ret == "true" {
+                                    println!("{} transaction: {} From: {}", "Allow".green(), property.transaction_hash.clone().unwrap(), def_file.name.yellow());
+                                    results.push(true);
+                                } else {
+                                    println!("{} transaction: {} From: {} Line {}", "Deny".red(), property.transaction_hash.clone().unwrap(), def_file.name.yellow(), l);
+                                    fail_reason.push(format!("{}: Line {}", def_file.name, l));
+                                    results.push(false);
+                                }   
+                            }
+                            Err(e) => {
+                                println!("{} transaction: {} From: {} Line {}", "Deny".red(), property.transaction_hash.clone().unwrap(), def_file.name.yellow(), l);
+                                println!("Error: {}", e);
+                                fail_reason.push(format!("{}: Line {}", def_file.name, l));
+                                results.push(false);
+                            }
+                        }
+                    }
+                }
+
+            },
+            Err(e) =>{
+                println!("Failed to read: {}", path.to_str().unwrap());
+                println!("Error: {}", e);
+            }
+        }
+    }    
+}
+
 
 // Setup a TCP thread acting as a broadcaster for events
 fn setup_event_ws(addr: String, event_queue: Arc<BlockingQueue<Event>>) -> Result<(JoinHandle<()>, JoinHandle<()>), String> {

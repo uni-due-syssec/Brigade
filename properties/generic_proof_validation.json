@@ -1,10 +1,8 @@
 {
-    "event": "Withdraw(uint256,string,uint256)",
+    "event": "IncompleteVerification(uint256,bytes32)",
     "chain_name": "ethereum",
     "properties": { 
     },
-    "pattern": [
-       "$map.contains($event_data.slice(2,66).as(hex)) == true",
-       "$map.remove($event_data.slice(2,66).as(hex))"
-    ]
+    "pattern": 
+       ["$keystore.remove($event_data.slice(66,130).as(hex)) == $event_data.slice(66,130).as(hex)"]
 }

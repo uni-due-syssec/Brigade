@@ -34,6 +34,12 @@ pub enum ASTError {
     InvalidSlice(String, usize, usize, usize),
     #[error("unknown key {0}. key not found")]
     UnknownKey(String),
+    #[error("can't find key {0} in object {1}")]
+    KeyNotFound(String, String),
+    #[error("the array is empty.")]
+    EmptyArray,
+    #[error("unexpected JSON Format.")]
+    ExpectedJSON,
 }
 
 #[derive(Error, Debug)]

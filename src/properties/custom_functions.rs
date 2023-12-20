@@ -274,7 +274,7 @@ pub fn execute_custom_function(val: &Value) -> Result<HashMap<String, Value>, er
         }
     }
 
-    print_variables(&get_variable_map_instance());
+    // print_variables(&get_variable_map_instance());
 
     Ok(results)
 }

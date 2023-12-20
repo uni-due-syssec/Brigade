@@ -495,66 +495,50 @@ impl ASTNode {
             }
             ASTNode::UnaryArithmetic(operator, value) => {
                 println!(
-                    "{}└── {}: {} Result: {}",
+                    "{}└── {}: {}",
                     prefix,
                     "Arithmetic".fg_rgb::<156, 9, 95>(),
-                    operator.to_string(),
-                    self.evaluate().unwrap().get_value().green()
+                    operator.to_string()
                 );
                 value.print(&format!("{}    ", prefix));
             }
             ASTNode::BinaryArithmetic(operator, left, right) => {
                 println!(
-                    "{}└── {}: {} Result: {}",
+                    "{}└── {}: {}",
                     prefix,
                     "Arithmetic".fg_rgb::<156, 9, 95>(),
-                    operator.to_string(),
-                    self.evaluate().unwrap().get_value().green()
+                    operator.to_string()
                 );
                 left.print(&format!("{}│   ", prefix));
                 right.print(&format!("{}    ", prefix));
             }
             ASTNode::UnaryLogic(operator, value) => {
                 println!(
-                    "{}└── {}: {} Result: {}",
+                    "{}└── {}: {}",
                     prefix,
                     "Logic".fg_rgb::<112, 9, 156>(),
-                    operator.to_string(),
-                    self.evaluate().unwrap().get_value().green()
+                    operator.to_string()
                 );
                 value.print(&format!("{}    ", prefix));
             }
             ASTNode::BinaryLogic(operator, left, right) => {
                 println!(
-                    "{}└── {}: {} Result: {}",
+                    "{}└── {}: {}",
                     prefix,
                     "Logic".fg_rgb::<112, 9, 156>(),
-                    operator.to_string(),
-                    self.evaluate().unwrap().get_value().green()
+                    operator.to_string()
                 );
                 left.print(&format!("{}│   ", prefix));
                 right.print(&format!("{}    ", prefix));
             }
             ASTNode::Function(func, args) => {
 
-                match self.evaluate(){
-                    Ok(v) => 
-                    println!(
-                        "{}└── {}: {} Result: {}",
-                        prefix,
-                        "Function".cyan(),
-                        func.to_string(),
-                        v.get_value().green()
-                    ),
-                    Err(_) => 
-                    println!(
-                        "{}└── {}: {} Result: {}",
-                        prefix,
-                        "Function".cyan(),
-                        func.to_string(),
-                        "Error".to_string().red()
-                    ),
-                };
+                println!(
+                    "{}└── {}: {}",
+                    prefix,
+                    "Function".cyan(),
+                    func.to_string()
+                );
 
                 let last = args.len() - 1;
                 for (i, arg) in args.iter().enumerate() {
@@ -1814,18 +1798,48 @@ impl ASTNode {
                         }
                     }
                     Functions::Remove => {
-                        let me = args[0].clone().evaluate()?;
+                        let me = args[0].evaluate()?;
                         let key = args[1].evaluate()?;
 
-                        match me {
+                        match me.clone() {
                             ASTConstant::Map(mut map) => {
-                                map.remove(&key.get_value());
-                                if let ASTNode::Variable(name, _) = *args[0].clone() {
-                                    set_var!(name, map);
-                                    return Ok(ASTConstant::Bool(true));
+                                match map.remove(&key.get_value()){
+                                    Some(v) => {
+                                        if let ASTNode::Variable(name, _) = *args[0].clone() {
+                                            set_var!(name, map);
+                                        }
+                                        Ok(v)
+                                    },
+                                    None => Err(ASTError::UnknownKey(key.get_value().to_string())),
                                 }
-                                return Ok(ASTConstant::Bool(false));
-                            }
+                            },
+                            ASTConstant::Array(mut arr) => {
+
+                                if arr.len() == 0{
+                                    return Err(ASTError::EmptyArray);
+                                }
+
+                                let mut index = 0;
+                                for a in &arr{
+                                    if a.get_value() == key.get_value(){
+                                        break;
+                                    }
+                                    index += 1;
+                                }
+
+                                if index > arr.len()-1{
+                                    return Err(ASTError::KeyNotFound(key.get_value(), me.get_value()));
+                                }
+
+                                if index == 0 && arr[0].get_value() != key.get_value(){
+                                    return Err(ASTError::KeyNotFound(key.get_value(), me.get_value()));
+                                }
+                                let ret = arr.remove(index);
+                                if let ASTNode::Variable(name, _) = *args[0].clone() {
+                                    set_var!(name, arr);
+                                }
+                                return Ok(ret);
+                            },
                             _ => {
                                 return Err(ASTError::InvalidFunctionInvocation(
                                     "remove".to_owned(),
@@ -1908,16 +1922,16 @@ impl ASTNode {
                         let mut clear_args = args.iter().map(|x| x.evaluate().unwrap().get_value()).collect::<Vec<String>>();
                         replace_args_in_json(&mut json, &mut clear_args);
 
-                        let json = serde_json::to_string(&json).unwrap();
-                        println!("Json: {}", json);
+                        // let json = serde_json::to_string(&json).unwrap();
+                        // println!("Json: {}", json);
                         // Build Client and send request
                         let client = reqwest::blocking::Client::builder().build().unwrap();
-                        print!("Endpoint: {}\n", endpoint_address);
+                        // print!("Endpoint: {}\n", endpoint_address);
                         let resp = client.post(endpoint_address).json(&json).send().unwrap();
-                        let resp2 = client.post(endpoint_address).json(&json).build().unwrap();
-                        println!("Request: {:?}", resp2);
+                        // let resp2 = client.post(endpoint_address).json(&json).build().unwrap();
+                        // println!("Request: {:?}", resp2);
                         let body = resp.text().unwrap();
-                        println!("Result: {:?}", body);
+                        // println!("Result: {:?}", body);
                         let result:Value = serde_json::from_str(&body.as_str()).unwrap();
                         
                         // check if message contains an error
@@ -1925,7 +1939,12 @@ impl ASTNode {
                             return Err(ASTError::InvalidFunctionInvocation(format!("Error: {}",result.get("error").unwrap().get("message").unwrap().as_str().unwrap())));
                         }
 
-                        Ok(ASTConstant::String(result.to_string()))
+                        let ret = ASTNode::from(result).evaluate();
+
+                        match ret {
+                            Ok(v) => Ok(v),
+                            Err(e) => Err(ASTError::ExpectedJSON)
+                        }
                     }
                 }
             }
@@ -2017,6 +2036,31 @@ impl From<ASTConstant> for ASTNode {
                     .collect();
                 ASTNode::Map(v)
             }
+        }
+    }
+}
+
+impl From<Value> for ASTNode {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Bool(value) => ASTNode::ConstantBool(value),
+            Value::Number(value) => ASTNode::ConstantNumber(u256::from(value.as_u64().unwrap())),
+            Value::String(value) => ASTNode::ConstantString(value),
+            Value::Array(arr) => {
+                let v = arr
+                    .iter()
+                    .map(|x| Box::new(ASTNode::from(x.clone())))
+                    .collect();
+                ASTNode::Array(v)
+            },
+            Value::Object(map) => {
+                let v = map
+                    .iter()
+                    .map(|(k, v)| (k.clone(), Box::new(ASTNode::from(v.clone()))))
+                    .collect();
+                ASTNode::Map(v)
+            }
+            _ => ASTNode::ConstantString("None".to_string()),
         }
     }
 }
@@ -2701,7 +2745,7 @@ pub fn shunting_yard_algorithm(tokens: Vec<String>) -> Result<VecDeque<String>, 
     }
 
     while !stack.is_empty() {
-        println!("Stack: {:?}", stack);
+        // println!("Stack: {:?}", stack);
         let val = stack.pop().unwrap();
         if val == "(" {
             return Err("Unmatched Parentheses: Leftover on Stack. More parentheses are opening than closing");
@@ -2931,6 +2975,47 @@ pub fn build_ast_root(text: &str) -> Result<ASTNode, &'static str> {
     }
 }
 
+/// Build an AST and return each root
+pub fn build_code(text: &str) -> Result<Vec<ASTNode>, &'static str> {
+    let tokens = tokenize(text.to_string());
+
+    let mut all_statements: Vec<Vec<String>> = vec![];
+
+    let mut stmt: Vec<String> = vec![];
+    for t in tokens.iter(){
+        if t == "\n"{
+            if stmt.is_empty(){
+                continue;
+            }
+            all_statements.push(stmt.clone());
+            stmt.clear();
+            continue;
+        }
+        stmt.push(t.clone());
+    }
+
+    let mut code = vec![];
+    for (line, stmt) in all_statements.iter().enumerate(){
+        match shunting_yard_algorithm(stmt.clone()) {
+            Ok(postfix) => {
+                // println!("{:?}", postfix);
+                match parse_postfix(postfix) {
+                    Ok((_, root)) => code.push(root),
+                    Err(e) => {
+                        println!("Error in line {}: {:?}", line, e);
+                        return Err("Invalid Parsing of Postfix");
+                    }
+                }
+            }
+            Err(e) => {
+                println!("Error in line {}: {:?}", line, e);
+                return Err("Invalid Shunting Yard Algorithm");
+            }
+        }
+    }
+    return Ok(code);
+}
+
 pub fn build_ast(text: &str) -> Result<(Vec<ASTNode>, ASTNode), &'static str> {
     let tokens = tokenize(text.to_string());
     if let Ok(postfix) = shunting_yard_algorithm(tokens) {
@@ -3043,6 +3128,7 @@ mod test_ast {
     use std::hash::Hash;
 
     use ethnum::AsU256;
+    use sha3::digest::typenum::SquareRoot;
 
     use crate::properties::{ast::*, environment::print_variables};
 
@@ -3621,7 +3707,7 @@ mod test_ast {
         let ret = val.get_value();
         println!("{}", ret);
 
-        assert_eq!(ret, "true");
+        assert_eq!(ret, "0x12345");
         println!("{:?}", get_variable_map_instance());
     }
 
@@ -3785,11 +3871,52 @@ mod test_ast {
 
     #[test]
     fn test_custom_function() {
-        let root = build_ast_root("call(ethereum, get_balance, [0xa58A9d3A5E240b09Da3Bc0BFc011AF3d20D31763, latest])").unwrap();
+        let root = build_ast_root("call(ethereum, get_balance, [0xa58A9d3A5E240b09Da3Bc0BFc011AF3d20D31763, latest]).get(result)").unwrap();
         root.print("");
         let val = root.evaluate().unwrap();
         println!("{}", val.get_value());
 
         print_variables(&get_variable_map_instance());
+    }
+
+    #[test]
+    fn test_remove_arr(){
+
+        set_var!("arr", VarValues::Array(vec![]));
+
+        let root = build_ast_root("$arr.push(14)").unwrap();
+        root.print("");
+        let val = root.evaluate().unwrap();
+        println!("{}", val.get_value());
+
+        let root = build_ast_root("$arr.push(1000)").unwrap();
+        root.print("");
+        let val = root.evaluate().unwrap();
+        println!("{}", val.get_value());
+
+        let root = build_ast_root("$arr.push(4056)").unwrap();
+        root.print("");
+        let val = root.evaluate().unwrap();
+        println!("{}", val.get_value());
+        
+        let root = build_ast_root("$arr.remove(14)").unwrap();
+        root.print("");
+        let val = root.evaluate().unwrap();
+        println!("{}", val.get_value());
+
+        println!("{:?}", get_var!("arr"));
+    }
+
+    #[test]
+    fn test_full_code() {
+        let root = build_code("
+            assign(stuff, call(ethereum, get_balance, [0xa58A9d3A5E240b09Da3Bc0BFc011AF3d20D31763, latest]))
+            $stuff.get(result)
+        ").unwrap();
+
+        for r in root{
+            let val = r.evaluate().unwrap();
+            println!("{}", val.get_value());
+        }
     }
 }

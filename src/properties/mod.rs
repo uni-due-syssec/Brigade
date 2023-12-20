@@ -16,6 +16,8 @@ pub(crate) mod environment;
 pub mod definition;
 mod error;
 
+pub mod talon;
+
 /// List of properties
 /// 
 /// LockLogic:

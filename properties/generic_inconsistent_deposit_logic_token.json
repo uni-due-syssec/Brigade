@@ -3,14 +3,14 @@
     "chain_name": "ethereum",
     "properties": { 
         "input_data": "ethereum.get_transaction_by_hash($transaction_hash).result.input",
-        "token_address": "$input_data.slice(34,74).as(hex)",
+        "token_address": "$input_data.slice(34,74).as(address)",
         "token_amount": "$event_data.slice(66,130).as(u256)",
         "call_data": "0x70a08231000000000000000000000000",
         "full_call": "$call_data.push($poc1_contract.slice(2,42))",
-        "self_balance_after": "ethereum.call_method($full_call, $poc1_contract, $ethereum_block_number.as(hex)).data",
-        "self_balance_before": "ethereum.call_method($full_call, $poc1_contract, ($ethereum_block_number - 1).as(hex)).data"
+        "self_balance_after": "ethereum.call_method($full_call, $token_address, $ethereum_block_number.as(hex)).result",
+        "self_balance_before": "ethereum.call_method($full_call, $token_address, ($ethereum_block_number - 1).as(hex)).result"
     },
     "pattern": [
-        "$token_amount > 0"
+        "$self_balance_before + $token_amount == $self_balance_after"
     ]
 }

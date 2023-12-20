@@ -83,6 +83,12 @@ However, by using the `at()` function only one index is used.
 11. `Assign`
     - `assign(variable_name, value)`
     - Create a new variable with a name and a value
+12. 'Custom Functions'
+    - `call(connection, functionname, [args])`
+    - Call the RPC method in the directory ./functions/connection/functionname.json with the arguments provided
+    The folder functions/connection/ needs a connection.json that specifies the "endpoint" as a JSON argument to the http endpoint of the blockchain.
+    The function itself specifies the RPC method to call and indicates a variable by a leading '$'-sign.
+    Returns a map that can be queried with the get method
 
 > Note: Sometimes functions return strings but the context needs the result to be a boolean. Therefore, string can be compared with a boolean true to evaluate to true: `$str.push(a) && true`
 >
