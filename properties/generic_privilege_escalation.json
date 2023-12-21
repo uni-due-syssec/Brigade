@@ -2,9 +2,9 @@
     "event": "PrivilegedEvent()",
     "chain_name": "ethereum",
     "properties": { 
+        "privileged_account": "0xa58A9d3A5E240b09Da3Bc0BFc011AF3d20D31763"
     },
     "pattern": [
-        "assign(privileged_account, 0xACCADD6355000000000000000000000000000000)",
-        "$payer_address == $privileged_account"
+        "$payer_address.tolower() == $privileged_account.tolower()"
     ]
 }

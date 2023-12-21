@@ -140,7 +140,7 @@ fn main() {
     let event_thread = thread::spawn(move || {
         // Setup the Event Socket
         let event_queue: Arc<BlockingQueue<Event>> = Arc::new(BlockingQueue::new());
-        // let (handle1, handle2) = setup_event_ws(ip_addr, event_queue.clone()).unwrap();
+        let (handle1, handle2) = setup_event_ws(ip_addr, event_queue.clone()).unwrap();
 
         // Event Loop
         loop {
@@ -148,8 +148,8 @@ fn main() {
             event_loop(property.clone(), event_queue.clone());
         }
 
-        // handle1.join().unwrap();
-        // handle2.join().unwrap();
+        handle1.join().unwrap();
+        handle2.join().unwrap();
     });
 
     thread_ids.push(event_thread);
@@ -197,6 +197,7 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
     let prp = property.serialize();
 
     for (key, value) in prp.as_object().unwrap() {
+        // println!("Adding {} to Map {:p}", key, get_variable_map_instance());
         if key.to_string() == "block_number"{
             let bn = property.src_chain.clone().unwrap() + "_" + key;
             let v = &value.as_str().unwrap()[5..];
@@ -233,6 +234,8 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
     let mut checked_vec: Vec<String> = vec![];
     // Which file was failed
     let mut fail_reason: Vec<String> = vec![];
+
+    // Process the properties
     process_json_properties(property.clone(), &mut results, &mut checked_vec, &mut fail_reason);
 
     // process_talon_code(property.clone(), &mut results, &mut fail_reason);
@@ -278,7 +281,7 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
 
 fn process_json_properties(property: Properties, results: &mut Vec<bool>, checked_vec: &mut Vec<String>, fail_reason: &mut Vec<String>) -> bool{
     let event = property.occured_event.clone().unwrap();
-    //println!("Dir_len {}", fs::read_dir("properties").unwrap().count());
+    // println!("Dir_len {}", fs::read_dir("properties").unwrap().count());
     // Find Property Files which are triggered by the Event and the chain
     for file in fs::read_dir("properties").unwrap() {
         
@@ -293,14 +296,14 @@ fn process_json_properties(property: Properties, results: &mut Vec<bool>, checke
             if ev != event {
                 let hashed_event = utils::get_ethereum_topic_ids(ev);
                 if hashed_event != event{
-                    //println!("hashed_event: {}, event: {}", hashed_event, event);
+                    // println!("hashed_event: {}, event: {}", hashed_event, event);
                     continue;
                 }
             }
         } else {   // Non Ethereum Chains
             if def_file.get("event").unwrap().as_str().unwrap() != event 
             || def_file.get("chain_name").unwrap().as_str().unwrap().to_lowercase() != property.src_chain.clone().unwrap().to_lowercase() {
-                //println!("Continuing...");
+                // println!("Continuing...");
                 continue;
             }
         }
@@ -316,19 +319,6 @@ fn process_json_properties(property: Properties, results: &mut Vec<bool>, checke
                 return false;
             }
         }
-
-        // for (key, value) in vars {
-        //     if value.is_string() && value.as_str().unwrap().starts_with("u256:"){
-        //         let s = &value.as_str().unwrap()[5..];
-        //         set_var!(key, u256::from_str(s).unwrap());
-        //     }
-        //     else if value.is_string() && value.as_str().unwrap().starts_with("i256:"){
-        //         let s = &value.as_str().unwrap()[5..];
-        //         set_var!(key, i256::from_str(s).unwrap());
-        //     }else{
-        //         set_var!(key, value);
-        //     }
-        // }
 
         // parse pattern into AST
         let pattern = def_file.get("pattern").unwrap().as_array().unwrap();

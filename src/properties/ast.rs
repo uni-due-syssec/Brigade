@@ -207,7 +207,7 @@ pub enum ASTNode {
     Map(HashMap<String, Box<ASTNode>>),
 
     // Variable
-    Variable(String, &'static VariableMap), // String points to a variable on the VariableMap
+    Variable(String), // String points to a variable on the VariableMap
 
     // Operators
     UnaryArithmetic(ArithmeticOperator, Box<ASTNode>),
@@ -222,7 +222,7 @@ pub enum ASTNode {
 impl From<String> for ASTNode {
     fn from(s: String) -> Self {
         if s.starts_with('$') {
-            return ASTNode::Variable(s[1..].to_owned(), get_variable_map_instance());
+            return ASTNode::Variable(s[1..].to_owned());
         }
         ASTNode::ConstantString(s)
     }
@@ -231,7 +231,7 @@ impl From<String> for ASTNode {
 impl From<&str> for ASTNode {
     fn from(s: &str) -> Self {
         if s.starts_with("$") {
-            return ASTNode::Variable(s[1..].to_owned(), get_variable_map_instance());
+            return ASTNode::Variable(s[1..].to_owned());
         }
         ASTNode::ConstantString(s.to_owned())
     }
@@ -471,7 +471,7 @@ impl ASTNode {
                     v.print(&format!("{}{}", prefix, new_prefix));
                 }
             }
-            ASTNode::Variable(name, _) => {
+            ASTNode::Variable(name) => {
                 if let Some(v) = get_var!(name) {
                     match v.get_string() {
                         None => println!("{}└── {}: {}", prefix, name.blue(), v.get_value()),
@@ -563,11 +563,11 @@ impl ASTNode {
                     .collect();
                 Ok(ASTConstant::Map(new_map))
             }
-            ASTNode::Variable(name, map_ref) => {
-                match get_variable(map_ref, name) {
+            ASTNode::Variable(name) => {
+                match get_var!(name) {
                     Some(value) => {
-                        // println!("{:?}", value);
-                        Ok(value.evaluate()?)
+                        // println!("{:?} in Map {:p}", value, get_variable_map_instance());
+                        Ok(value.to_ASTNode().evaluate()?)
                     }
                     None => Err(ASTError::VariableNotFound { var: name.clone() }),
                 }
@@ -1632,7 +1632,7 @@ impl ASTNode {
                         let value = args[1].evaluate()?;
                         match me {
                             ASTConstant::Array(arr) => {
-                                if let ASTNode::Variable(name, map) = *node {
+                                if let ASTNode::Variable(name) = *node {
                                     if let Some(a) = get_var!(&name) {
                                         match a {
                                             VarValues::Array(mut inner) => match value {
@@ -1716,7 +1716,7 @@ impl ASTNode {
                             }
                             ASTConstant::String(s) => {
                                 let new_string = format!("{}{}", s, value.get_value());
-                                if let ASTNode::Variable(name, _) = *node {
+                                if let ASTNode::Variable(name) = *node {
                                     set_var!(name, new_string.clone());
                                 }
                                 Ok(ASTConstant::String(new_string))
@@ -1739,7 +1739,7 @@ impl ASTNode {
                         match me {
                             ASTConstant::Array(mut arr) => {
                                 let last = arr.pop().unwrap();
-                                if let ASTNode::Variable(name, _) = *args[0].clone() {
+                                if let ASTNode::Variable(name) = *args[0].clone() {
                                     set_var!(name, arr);
                                 }
 
@@ -1784,7 +1784,7 @@ impl ASTNode {
                             ASTConstant::Map(mut map) => {
                                 map.insert(key.get_value(), value);
 
-                                if let ASTNode::Variable(name, _) = *args[0].clone() {
+                                if let ASTNode::Variable(name) = *args[0].clone() {
                                     set_var!(name, map);
                                     return Ok(ASTConstant::Bool(true));
                                 }
@@ -1805,7 +1805,7 @@ impl ASTNode {
                             ASTConstant::Map(mut map) => {
                                 match map.remove(&key.get_value()){
                                     Some(v) => {
-                                        if let ASTNode::Variable(name, _) = *args[0].clone() {
+                                        if let ASTNode::Variable(name) = *args[0].clone() {
                                             set_var!(name, map);
                                         }
                                         Ok(v)
@@ -1835,7 +1835,7 @@ impl ASTNode {
                                     return Err(ASTError::KeyNotFound(key.get_value(), me.get_value()));
                                 }
                                 let ret = arr.remove(index);
-                                if let ASTNode::Variable(name, _) = *args[0].clone() {
+                                if let ASTNode::Variable(name) = *args[0].clone() {
                                     set_var!(name, arr);
                                 }
                                 return Ok(ret);
@@ -1971,7 +1971,7 @@ impl ASTNode {
                     .collect::<Vec<String>>()
                     .join("\n")
             ),
-            ASTNode::Variable(name, map_ref) => get_var!(value name.as_str()).unwrap(),
+            ASTNode::Variable(name) => get_var!(value name.as_str()).unwrap(),
             ASTNode::UnaryArithmetic(operator, value) => {
                 format!("\t{}\t\n{}", operator.to_string(), value.format())
             }
@@ -2633,8 +2633,7 @@ pub fn parse_token(token: String) -> Result<ASTNode, &'static str> {
                     Err(_) => {
                         if token.starts_with('$') {
                             Ok(ASTNode::Variable(
-                                token[1..].to_string(),
-                                get_variable_map_instance(),
+                                token[1..].to_string()
                             ))
                         } else {
                             Ok(ASTNode::ConstantString(token))
