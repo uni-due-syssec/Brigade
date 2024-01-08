@@ -1,13 +1,16 @@
-
 use std::sync::mpsc::Sender;
 
 use owo_colors::OwoColorize;
-use serde::{Deserialize, Serialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 use ws::Result;
 
-use crate::{sockets::{self, socket, ethereum_socket, solana_socket}, properties::Properties};
+use crate::{
+    properties::Properties,
+    sockets::{self, ethereum_socket, socket, solana_socket},
+};
 
+pub mod connection;
 mod ethereum_config;
 
 /// Configuration for connecting to a Blockchain and getting the events
@@ -28,7 +31,14 @@ pub struct ChainConfig {
 }
 
 impl ChainConfig {
-    pub fn new(rpc_url: String, http_url: String, name: String, contract_address: String, subscription_method: String, filter: Value) -> Self {
+    pub fn new(
+        rpc_url: String,
+        http_url: String,
+        name: String,
+        contract_address: String,
+        subscription_method: String,
+        filter: Value,
+    ) -> Self {
         Self {
             rpc_url,
             http_url,
@@ -38,7 +48,7 @@ impl ChainConfig {
             filter,
         }
     }
-    
+
     pub fn get_http_url(&self) -> String {
         self.http_url.clone()
     }
@@ -67,64 +77,107 @@ impl ChainConfig {
     }
 
     fn connect_generic(&self, event_channel: Sender<Properties>) -> Result<()> {
-        ws::connect(self.rpc_url.clone(), |out| {
-            // Request subscription for Chain Events
-            let request = json!({
-                "jsonrpc": "2.0",
-                "method": self.get_subscription_method(),
-                "params": self.filter,
-                "id": 1
-            });
-            
-            // println!("{:?}", request.to_string());
+        let request = json!({
+            "jsonrpc": "2.0",
+            "method": self.get_subscription_method(),
+            "params": self.filter,
+            "id": 1
+        });
 
-            out.send(request.to_string()).unwrap();
-            // Choose correct websocket implementation
-            // Process incoming WebSocket messages handled by the WebSocketClientHandler
-            socket::WebSocketClientHandler::new(
-                // State of the Client
-                self.name.clone(),out, vec![])
-        }).unwrap();
-        
+        // Check if Chain exists already
+        if let Some(con) = connection::get_established_connections().get(&self.name) {
+            println!("Chain {} is already connected", self.name);
+
+            con.send(request.to_string()).unwrap();
+            return Ok(());
+        } else {
+            ws::connect(self.rpc_url.clone(), |out| {
+                let sender =
+                    connection::get_established_connections().insert(self.name.clone(), out);
+                match sender {
+                    Some(o) => o.send(request.to_string()).unwrap(),
+                    None => println!("No connection found for {}", self.name),
+                }
+                // Choose correct websocket implementation
+                // Process incoming WebSocket messages handled by the WebSocketClientHandler
+                socket::WebSocketClientHandler::new(
+                    // State of the Client
+                    self.name.clone(),
+                    vec![],
+                )
+            })
+            .unwrap();
+        }
+
         Ok(())
     }
 
     fn connect_solana(&self, event_channel: Sender<Properties>) -> Result<()> {
-        ws::connect(self.rpc_url.clone(), |out| {
-            // Request subscription for Chain Events
-            let request = json!({
-                "jsonrpc": "2.0",
-                "method": self.get_subscription_method(),
-                "params": self.filter,
-                "id": 1
-            });
+        let request = json!({
+            "jsonrpc": "2.0",
+            "method": self.get_subscription_method(),
+            "params": self.filter,
+            "id": 1
+        });
+        // Check if Chain exists already
+        if let Some(con) = connection::get_established_connections().get(&self.name) {
+            println!("Chain {} is already connected", self.name);
 
-            out.send(request.to_string()).unwrap();
+            con.send(request.to_string()).unwrap();
+            return Ok(());
+        } else {
+            ws::connect(self.rpc_url.clone(), |out| {
+                let sender =
+                    connection::get_established_connections().insert(self.name.clone(), out);
+                match sender {
+                    Some(o) => o.send(request.to_string()).unwrap(),
+                    None => println!("No connection found for {}", self.name),
+                }
 
-            solana_socket::SolanaSocketHandler::new(out, vec![], event_channel.to_owned(), self.get_http_url().clone())
-        }).unwrap();
-        
+                solana_socket::SolanaSocketHandler::new(
+                    vec![],
+                    event_channel.to_owned(),
+                    self.get_http_url().clone(),
+                )
+            })
+            .unwrap();
+        }
         Ok(())
     }
 
     fn connect_ethereum(&self, event_channel: Sender<Properties>) -> Result<()> {
-        ws::connect(self.rpc_url.clone(), |out| {
-            // Request subscription for Chain Events
-            let request = json!({
-                "jsonrpc": "2.0",
-                "method": self.get_subscription_method(),
-                "params": self.filter,
-                "id": 1
-            });
-            
-            // println!("{:?}", request.to_string());
+        let request = json!({
+            "jsonrpc": "2.0",
+            "method": self.get_subscription_method(),
+            "params": self.filter,
+            "id": 1
+        });
 
-            out.send(request.to_string()).unwrap();
-            // Choose correct websocket implementation
-            // Process incoming WebSocket messages handled by the WebSocketClientHandler
-            ethereum_socket::EthereumSocketHandler::new(out, vec![], event_channel.to_owned(), self.get_http_url().clone())
-        }).unwrap();
-        
+        // Check if Chain exists already
+        if let Some(con) = connection::get_established_connections().get(&self.name) {
+            println!("Chain {} is already connected", self.name);
+
+            con.send(request.to_string()).unwrap();
+            return Ok(());
+        } else {
+            println!("Making new connection to {}", self.name);
+            ws::connect(self.rpc_url.clone(), |out| {
+                let sender =
+                    connection::get_established_connections().insert(self.name.clone(), out);
+                match sender {
+                    Some(o) => o.send(request.to_string()).unwrap(),
+                    None => println!("No connection found for {}", self.name),
+                }
+                // Choose correct websocket implementation
+                // Process incoming WebSocket messages handled by the WebSocketClientHandler
+                ethereum_socket::EthereumSocketHandler::new(
+                    vec![],
+                    event_channel.to_owned(),
+                    self.get_http_url().clone(),
+                )
+            })
+            .unwrap();
+        }
         Ok(())
     }
 }
