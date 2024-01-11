@@ -37,10 +37,13 @@ impl EthereumSocketHandler {
             // Add event message params to the variables
             // println!("Message: {}", ethereum_msg);
 
+            // let event_data = message.clone().get("")
+
             let event_data = ethereum_msg.params.result.data.clone();
             if event_data.len() <= 2 {
                 println!("No Event Data");
             }
+            // println!("Variables in Map: {:p}", get_variable_map_instance());
             set_var!("event_data", event_data);
 
             // A new Event is emitted --> A new Index in the properties list must be added
@@ -179,6 +182,7 @@ impl EthereumSocketHandler {
 impl Handler for EthereumSocketHandler {
     fn on_message(&mut self, msg: ws::Message) -> ws::Result<()> {
         // Try to parse the message into json message
+        println!("Ethereum Message");
         let message: Value = serde_json::from_str(&msg.to_string()).unwrap();
         self.handle_ethereum(message);
         Ok(())

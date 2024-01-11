@@ -365,17 +365,53 @@ fn process_json_properties(
 
         // parse pattern into AST
         let pattern = def_file.get("pattern").unwrap().as_array().unwrap();
-        // Transform all patterns into one large string
-        let processed_pattern = pattern
+
+        let patterns = pattern
             .iter()
             .map(|p| p.as_str().unwrap().to_string())
+            .collect::<Vec<String>>();
+        let mut line_results = vec![];
+        for p in patterns {
+            match build_ast_root(&p) {
+                Ok(root) => {
+                    root.print("");
+                    match root.evaluate() {
+                        Ok(v) => {
+                            let ret: String = v.get_value();
+                            line_results.push(ret);
+                        }
+                        Err(e) => {
+                            println!("Error: {}", e);
+                            line_results.push("false".to_string());
+                            // return false;
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("Error: {}", e);
+                    line_results.push("false".to_string());
+                    // return false;
+                }
+            }
+        }
+
+        // Join all line results with && in one string
+        let processed_pattern = line_results
+            .iter()
+            .map(|p| p.as_str().to_string())
             .collect::<Vec<String>>()
             .join(" && ");
-        // println!("Pattern: {}", processed_pattern);
+
+        // let processed_pattern = pattern
+        //     .iter()
+        //     .map(|p| p.as_str().unwrap().to_string())
+        //     .collect::<Vec<String>>()
+        //     .join(" && ");
+        // // println!("Pattern: {}", processed_pattern);
 
         match build_ast_root(&processed_pattern) {
             Ok(root) => {
-                root.print("");
+                // root.print("");
 
                 // Evaluate AST
                 let val = root.evaluate();

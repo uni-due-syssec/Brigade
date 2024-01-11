@@ -2,7 +2,13 @@
     "event": "IncompleteVerification(uint256,bytes32)",
     "chain_name": "ethereum",
     "properties": { 
+        "input_data": "ethereum.get_transaction_by_hash($transaction_hash).result.input",
+        "receiver": "$input_data.slice(162, 202).as(address)",
+        "proof": "$input_data.slice(10, 74).as(hex)"
     },
     "pattern": 
-       ["$keystore.remove($event_data.slice(66,130).as(hex)) == $event_data.slice(66,130).as(hex)"]
+       [
+        "$map.remove($receiver) == $proof",
+        "$receiver == $payer_address"
+    ]
 }

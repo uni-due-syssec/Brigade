@@ -532,13 +532,7 @@ impl ASTNode {
                 right.print(&format!("{}    ", prefix));
             }
             ASTNode::Function(func, args) => {
-
-                println!(
-                    "{}└── {}: {}",
-                    prefix,
-                    "Function".cyan(),
-                    func.to_string()
-                );
+                println!("{}└── {}: {}", prefix, "Function".cyan(), func.to_string());
 
                 let last = args.len() - 1;
                 for (i, arg) in args.iter().enumerate() {
@@ -1766,15 +1760,16 @@ impl ASTNode {
 
                         let concatenated_bytes = serialized_values.as_slice();
 
-                        let mut hasher = sha3::Keccak256::digest(concatenated_bytes).to_vec();
-                        let hex_string = hasher
-                            .iter()
-                            .map(|&num| format!("{:02x}", num))
-                            .collect::<Vec<String>>()
-                            .join("");
-                        let s = "0x".to_string() + &hex_string;
-                        // println!("Keccak256: {}", s);
-                        Ok(ASTConstant::String(s))
+                        // let mut hasher = sha3::Keccak256::digest(concatenated_bytes).to_vec();
+                        // let hex_string = hasher
+                        //     .iter()
+                        //     .map(|&num| format!("{:02x}", num))
+                        //     .collect::<Vec<String>>()
+                        //     .join("");
+                        // let s = "0x".to_string() + &hex_string;
+                        // // println!("Keccak256: {}", s);
+                        unimplemented!("Keccak256 is not implemented yet");
+                        // Ok(ASTConstant::String(s))
                     }
                     Functions::Insert => {
                         let me = args[0].clone().evaluate()?;
@@ -1783,8 +1778,9 @@ impl ASTNode {
                         match me {
                             ASTConstant::Map(mut map) => {
                                 map.insert(key.get_value(), value);
-
+                                // println!("Insert: {}", key.get_value());
                                 if let ASTNode::Variable(name) = *args[0].clone() {
+                                    // println!("Store: {}", name);
                                     set_var!(name, map);
                                     return Ok(ASTConstant::Bool(true));
                                 }
@@ -1802,44 +1798,47 @@ impl ASTNode {
                         let key = args[1].evaluate()?;
 
                         match me.clone() {
-                            ASTConstant::Map(mut map) => {
-                                match map.remove(&key.get_value()){
-                                    Some(v) => {
-                                        if let ASTNode::Variable(name) = *args[0].clone() {
-                                            set_var!(name, map);
-                                        }
-                                        Ok(v)
-                                    },
-                                    None => Err(ASTError::UnknownKey(key.get_value().to_string())),
+                            ASTConstant::Map(mut map) => match map.remove(&key.get_value()) {
+                                Some(v) => {
+                                    if let ASTNode::Variable(name) = *args[0].clone() {
+                                        set_var!(name, map);
+                                    }
+                                    Ok(v)
                                 }
+                                None => Err(ASTError::UnknownKey(key.get_value().to_string())),
                             },
                             ASTConstant::Array(mut arr) => {
-
-                                if arr.len() == 0{
+                                if arr.len() == 0 {
                                     return Err(ASTError::EmptyArray);
                                 }
 
                                 let mut index = 0;
-                                for a in &arr{
-                                    if a.get_value() == key.get_value(){
+                                for a in &arr {
+                                    if a.get_value() == key.get_value() {
                                         break;
                                     }
                                     index += 1;
                                 }
 
-                                if index > arr.len()-1{
-                                    return Err(ASTError::KeyNotFound(key.get_value(), me.get_value()));
+                                if index > arr.len() - 1 {
+                                    return Err(ASTError::KeyNotFound(
+                                        key.get_value(),
+                                        me.get_value(),
+                                    ));
                                 }
 
-                                if index == 0 && arr[0].get_value() != key.get_value(){
-                                    return Err(ASTError::KeyNotFound(key.get_value(), me.get_value()));
+                                if index == 0 && arr[0].get_value() != key.get_value() {
+                                    return Err(ASTError::KeyNotFound(
+                                        key.get_value(),
+                                        me.get_value(),
+                                    ));
                                 }
                                 let ret = arr.remove(index);
                                 if let ASTNode::Variable(name) = *args[0].clone() {
                                     set_var!(name, arr);
                                 }
                                 return Ok(ret);
-                            },
+                            }
                             _ => {
                                 return Err(ASTError::InvalidFunctionInvocation(
                                     "remove".to_owned(),
@@ -1890,7 +1889,6 @@ impl ASTNode {
                         }
                     }
                     Functions::Custom => {
-                        
                         // Index 1 = Endpoint
                         let endpoint = *args[0].clone();
                         // Index 2 = Function Name
@@ -1899,7 +1897,10 @@ impl ASTNode {
                         let args = args[2..].to_vec();
 
                         // Find correct endpoint
-                        let f = format!("functions/{}/connection.json", endpoint.evaluate().unwrap().get_value());
+                        let f = format!(
+                            "functions/{}/connection.json",
+                            endpoint.evaluate().unwrap().get_value()
+                        );
                         let p = Path::new(&f);
 
                         if !p.is_file() {
@@ -1907,19 +1908,28 @@ impl ASTNode {
                         }
 
                         // Read contents and get "endpoint" field
-                        let contents = fs::read_to_string(p).expect("Something went wrong reading the file");
+                        let contents =
+                            fs::read_to_string(p).expect("Something went wrong reading the file");
                         let json: Value = serde_json::from_str(&contents).unwrap();
                         let endpoint_address = json["endpoint"].as_str().unwrap();
 
                         // Find correct function
-                        let f = format!("functions/{}/{}.json", endpoint.evaluate().unwrap().get_value(), function_name.evaluate().unwrap().get_value());
+                        let f = format!(
+                            "functions/{}/{}.json",
+                            endpoint.evaluate().unwrap().get_value(),
+                            function_name.evaluate().unwrap().get_value()
+                        );
                         let p = Path::new(&f);
 
                         // Read contents and replace all params that start with a $ sign with the respective arguments
-                        let contents = fs::read_to_string(p).expect("Something went wrong reading the file");
+                        let contents =
+                            fs::read_to_string(p).expect("Something went wrong reading the file");
                         let mut json: Value = serde_json::from_str(&contents).unwrap();
-                        
-                        let mut clear_args = args.iter().map(|x| x.evaluate().unwrap().get_value()).collect::<Vec<String>>();
+
+                        let mut clear_args = args
+                            .iter()
+                            .map(|x| x.evaluate().unwrap().get_value())
+                            .collect::<Vec<String>>();
                         replace_args_in_json(&mut json, &mut clear_args);
 
                         // let json = serde_json::to_string(&json).unwrap();
@@ -1932,18 +1942,27 @@ impl ASTNode {
                         // println!("Request: {:?}", resp2);
                         let body = resp.text().unwrap();
                         // println!("Result: {:?}", body);
-                        let result:Value = serde_json::from_str(&body.as_str()).unwrap();
-                        
+                        let result: Value = serde_json::from_str(&body.as_str()).unwrap();
+
                         // check if message contains an error
                         if result.get("error").is_some() {
-                            return Err(ASTError::InvalidFunctionInvocation(format!("Error: {}",result.get("error").unwrap().get("message").unwrap().as_str().unwrap())));
+                            return Err(ASTError::InvalidFunctionInvocation(format!(
+                                "Error: {}",
+                                result
+                                    .get("error")
+                                    .unwrap()
+                                    .get("message")
+                                    .unwrap()
+                                    .as_str()
+                                    .unwrap()
+                            )));
                         }
 
                         let ret = ASTNode::from(result).evaluate();
 
                         match ret {
                             Ok(v) => Ok(v),
-                            Err(e) => Err(ASTError::ExpectedJSON)
+                            Err(e) => Err(ASTError::ExpectedJSON),
                         }
                     }
                 }
@@ -2052,7 +2071,7 @@ impl From<Value> for ASTNode {
                     .map(|x| Box::new(ASTNode::from(x.clone())))
                     .collect();
                 ASTNode::Array(v)
-            },
+            }
             Value::Object(map) => {
                 let v = map
                     .iter()
@@ -2549,14 +2568,17 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
                         // Get to the endpoint which is a valid path to the connection.json
                         let mut args_node: Vec<ASTNode> = vec![];
 
-                        while !stack.is_empty(){
+                        while !stack.is_empty() {
                             let arg = stack.pop().unwrap();
                             args_node.push(arg.clone());
 
                             // Check if is target
-                            let f = format!("functions/{}/connection.json", arg.evaluate().unwrap().get_value());
+                            let f = format!(
+                                "functions/{}/connection.json",
+                                arg.evaluate().unwrap().get_value()
+                            );
                             let p = Path::new(&f);
-                            if p.exists(){
+                            if p.exists() {
                                 let contents = fs::read_to_string(p)
                                     .expect("File not found or unable to read file");
                                 let json: Value = serde_json::from_str(&contents)
@@ -2567,13 +2589,13 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
 
                                 let args = args_node.iter().map(|x| Box::new(x.clone())).collect();
 
-                                let node =  ASTNode::Function(Functions::Custom, args);
+                                let node = ASTNode::Function(Functions::Custom, args);
                                 ast_vec.push(node.clone());
                                 stack.push(node);
                                 break;
                             }
                         }
-                        if stack.is_empty(){
+                        if stack.is_empty() {
                             // Stack is empty and no valid path found
                             return Err(ASTError::InvalidFunction("call()".to_string()));
                         }
@@ -2632,9 +2654,7 @@ pub fn parse_token(token: String) -> Result<ASTNode, &'static str> {
                     Ok(value) => Ok(ASTNode::ConstantSignedNumber(value)),
                     Err(_) => {
                         if token.starts_with('$') {
-                            Ok(ASTNode::Variable(
-                                token[1..].to_string()
-                            ))
+                            Ok(ASTNode::Variable(token[1..].to_string()))
                         } else {
                             Ok(ASTNode::ConstantString(token))
                         }
@@ -2808,14 +2828,14 @@ fn replace_args_in_json(json: &mut Value, args: &mut Vec<String>) {
             for i in arr {
                 replace_args_in_json(i, args);
             }
-        },
+        }
         Value::Object(map) => {
             let keys: Vec<String> = map.keys().cloned().collect();
             for k in keys {
                 let v = map.get_mut(&k).unwrap();
                 replace_args_in_json(v, args);
             }
-        },
+        }
         Value::String(s) => {
             if s.starts_with("$") {
                 if let Some(arg) = args.get(0) {
@@ -2823,7 +2843,7 @@ fn replace_args_in_json(json: &mut Value, args: &mut Vec<String>) {
                     args.remove(0);
                 }
             }
-        },
+        }
         _ => {}
     }
 }
@@ -2981,9 +3001,9 @@ pub fn build_code(text: &str) -> Result<Vec<ASTNode>, &'static str> {
     let mut all_statements: Vec<Vec<String>> = vec![];
 
     let mut stmt: Vec<String> = vec![];
-    for t in tokens.iter(){
-        if t == "\n"{
-            if stmt.is_empty(){
+    for t in tokens.iter() {
+        if t == "\n" {
+            if stmt.is_empty() {
                 continue;
             }
             all_statements.push(stmt.clone());
@@ -2994,7 +3014,7 @@ pub fn build_code(text: &str) -> Result<Vec<ASTNode>, &'static str> {
     }
 
     let mut code = vec![];
-    for (line, stmt) in all_statements.iter().enumerate(){
+    for (line, stmt) in all_statements.iter().enumerate() {
         match shunting_yard_algorithm(stmt.clone()) {
             Ok(postfix) => {
                 // println!("{:?}", postfix);
@@ -3879,8 +3899,7 @@ mod test_ast {
     }
 
     #[test]
-    fn test_remove_arr(){
-
+    fn test_remove_arr() {
         set_var!("arr", VarValues::Array(vec![]));
 
         let root = build_ast_root("$arr.push(14)").unwrap();
@@ -3897,7 +3916,7 @@ mod test_ast {
         root.print("");
         let val = root.evaluate().unwrap();
         println!("{}", val.get_value());
-        
+
         let root = build_ast_root("$arr.remove(14)").unwrap();
         root.print("");
         let val = root.evaluate().unwrap();
@@ -3913,9 +3932,19 @@ mod test_ast {
             $stuff.get(result)
         ").unwrap();
 
-        for r in root{
+        for r in root {
             let val = r.evaluate().unwrap();
             println!("{}", val.get_value());
         }
+    }
+
+    #[test]
+    fn test_insert_remove_map() {
+        let mut map: HashMap<String, VarValues> = HashMap::new();
+        set_var!("map", VarValues::Map(map));
+        let root = build_ast_root("$map.insert(0xe5752128B13c709d2A7E5348E601a016136a3F28, 0xda907f151946daa4671efcfbd42543ab19dd868bd4f6ab3e7d330746c7683c39) && ($map.remove(0xe5752128B13c709d2A7E5348E601a016136a3F28) == 0xda907f151946daa4671efcfbd42543ab19dd868bd4f6ab3e7d330746c7683c39)").unwrap();
+
+        let val = root.evaluate().unwrap();
+        println!("{}", val.get_value());
     }
 }

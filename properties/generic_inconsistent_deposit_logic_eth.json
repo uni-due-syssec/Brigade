@@ -9,6 +9,6 @@
         "amount": "$event_data.slice(130,194).as(hex)"
     },
     "pattern": [
-        "$value >= $amount"
+        "$value >= ($amount + (gas_price * gas_amount))"
     ]
 }

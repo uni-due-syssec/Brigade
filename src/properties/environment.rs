@@ -4,20 +4,23 @@ use std::mem::MaybeUninit;
 use std::str::FromStr;
 use std::sync::Once;
 
-use super::ast::{ASTNode, ASTConstant};
+use super::ast::{ASTConstant, ASTNode};
 
-use ethnum::{u256, i256, AsI256, AsU256};
-use owo_colors::{OwoColorize, colors::xterm::{LightCaribbeanGreen, LightAnakiwaBlue}};
+use ethnum::{i256, u256, AsI256, AsU256};
+use owo_colors::{
+    colors::xterm::{LightAnakiwaBlue, LightCaribbeanGreen},
+    OwoColorize,
+};
 use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum VarValues{
+pub enum VarValues {
     String(String),
     Number(u256),
     SignedNumber(i256),
     Bool(bool),
     Array(Vec<VarValues>),
-    Map(HashMap<String, VarValues>)
+    Map(HashMap<String, VarValues>),
 }
 
 pub trait GetVar<T> {
@@ -31,15 +34,15 @@ impl GetVar<&str> for &str {
     }
 }
 
-impl GetVar<i32> for i32{
+impl GetVar<i32> for i32 {
     fn get_value(value: VarValues) -> Option<i32> {
         if let VarValues::Number(v) = value {
             if v < i32::MAX.as_u256() {
-                Some(v.as_i32())    
-            }else{
+                Some(v.as_i32())
+            } else {
                 None
             }
-        }else{
+        } else {
             if let VarValues::SignedNumber(v) = value {
                 return Some(v.as_i32());
             }
@@ -48,11 +51,11 @@ impl GetVar<i32> for i32{
     }
 }
 
-impl GetVar<u32> for u32{
+impl GetVar<u32> for u32 {
     fn get_value(value: VarValues) -> Option<u32> {
         if let VarValues::Number(v) = value {
             Some(v.as_u32())
-        }else{
+        } else {
             if let VarValues::SignedNumber(v) = value {
                 return Some(v.as_u32());
             }
@@ -61,11 +64,11 @@ impl GetVar<u32> for u32{
     }
 }
 
-impl GetVar<i64> for i64{
+impl GetVar<i64> for i64 {
     fn get_value(value: VarValues) -> Option<i64> {
         if let VarValues::Number(v) = value {
             Some(v.as_i64())
-        }else{
+        } else {
             if let VarValues::SignedNumber(v) = value {
                 return Some(v.as_i64());
             }
@@ -74,11 +77,11 @@ impl GetVar<i64> for i64{
     }
 }
 
-impl GetVar<u64> for u64{
+impl GetVar<u64> for u64 {
     fn get_value(value: VarValues) -> Option<u64> {
         if let VarValues::Number(v) = value {
             Some(v.as_u64())
-        }else{
+        } else {
             if let VarValues::SignedNumber(v) = value {
                 return Some(v.as_u64());
             }
@@ -87,26 +90,26 @@ impl GetVar<u64> for u64{
     }
 }
 
-impl GetVar<u256> for u256{
+impl GetVar<u256> for u256 {
     fn get_value(value: VarValues) -> Option<u256> {
         if let VarValues::Number(v) = value {
             Some(v)
-        }else{
+        } else {
             if let VarValues::SignedNumber(v) = value {
-                if v < 0{
+                if v < 0 {
                     None
-                }else{
+                } else {
                     Some(v.as_u256())
                 }
-            }else{
+            } else {
                 if let VarValues::String(v) = value {
-                    if v.starts_with("u256:"){
+                    if v.starts_with("u256:") {
                         let s = &v[5..];
                         Some(u256::from_str(s).unwrap())
-                    }else{ 
+                    } else {
                         None
                     }
-                }else {
+                } else {
                     None
                 }
             }
@@ -114,26 +117,26 @@ impl GetVar<u256> for u256{
     }
 }
 
-impl GetVar<i256> for i256{
+impl GetVar<i256> for i256 {
     fn get_value(value: VarValues) -> Option<i256> {
         if let VarValues::SignedNumber(v) = value {
             Some(v)
-        }else{
+        } else {
             if let VarValues::Number(v) = value {
-                if v > i256::MAX.as_u256(){
+                if v > i256::MAX.as_u256() {
                     None
-                }else{
+                } else {
                     Some(v.as_i256())
                 }
-            }else{
+            } else {
                 if let VarValues::String(v) = value {
-                    if v.starts_with("i256:"){
+                    if v.starts_with("i256:") {
                         let s = &v[5..];
                         Some(i256::from_str(s).unwrap())
-                    }else{ 
+                    } else {
                         None
                     }
-                }else {
+                } else {
                     None
                 }
             }
@@ -141,21 +144,21 @@ impl GetVar<i256> for i256{
     }
 }
 
-impl GetVar<bool> for bool{
+impl GetVar<bool> for bool {
     fn get_value(value: VarValues) -> Option<bool> {
         if let VarValues::Bool(v) = value {
             Some(v)
-        }else{
+        } else {
             None
         }
     }
 }
 
-impl GetVar<String> for String{
+impl GetVar<String> for String {
     fn get_value(value: VarValues) -> Option<String> {
         if let VarValues::String(v) = value {
             Some(v)
-        }else{
+        } else {
             None
         }
     }
@@ -181,29 +184,28 @@ where
             //let arr = v.iter().map(|x| x.get_value()).collect::<Vec<V>>();
             let mut arr = vec![];
 
-            for l in v{
+            for l in v {
                 arr.push(V::get_value(l).unwrap());
             }
-            
+
             Some(arr)
-        }else{
+        } else {
             None
         }
     }
 }
 
-impl GetVar<HashMap<String, VarValues>> for HashMap<String, VarValues>{
+impl GetVar<HashMap<String, VarValues>> for HashMap<String, VarValues> {
     fn get_value(value: VarValues) -> Option<Self> {
         if let VarValues::Map(v) = value {
             Some(v)
-        }else{
+        } else {
             None
         }
     }
 }
 
 impl VarValues {
-
     pub fn get_type(&self) -> String {
         match self {
             VarValues::String(_) => "String".to_string(),
@@ -222,11 +224,19 @@ impl VarValues {
             VarValues::SignedNumber(value) => value.to_string(),
             VarValues::Bool(value) => value.to_string(),
             VarValues::Array(value) => {
-                let s = value.iter().map(|value| value.get_value()).collect::<Vec<String>>().join(",");
+                let s = value
+                    .iter()
+                    .map(|value| value.get_value())
+                    .collect::<Vec<String>>()
+                    .join(",");
                 return format!("[{}]", s);
-            },
+            }
             VarValues::Map(value) => {
-                let s = value.iter().map(|(key, value)| format!("{}:{}", key, value.get_value())).collect::<Vec<String>>().join(",");
+                let s = value
+                    .iter()
+                    .map(|(key, value)| format!("{}:{}", key, value.get_value()))
+                    .collect::<Vec<String>>()
+                    .join(",");
                 return format!("{{{}}}", s);
             }
         }
@@ -270,14 +280,14 @@ impl VarValues {
     pub fn to_ASTNode(&self) -> ASTNode {
         match self {
             VarValues::String(value) => {
-                if value.starts_with("u256:"){
+                if value.starts_with("u256:") {
                     ASTNode::ConstantNumber(value[5..].parse::<u256>().unwrap())
-                }else if value.starts_with("i256:"){
+                } else if value.starts_with("i256:") {
                     ASTNode::ConstantSignedNumber(value[5..].parse::<i256>().unwrap())
-                }else{
+                } else {
                     ASTNode::ConstantString(value.clone())
                 }
-            },
+            }
             VarValues::Number(value) => ASTNode::ConstantNumber(*value),
             VarValues::SignedNumber(value) => ASTNode::ConstantSignedNumber(*value),
             VarValues::Bool(value) => ASTNode::ConstantBool(*value),
@@ -287,7 +297,7 @@ impl VarValues {
                     arr.push(Box::new(v.to_ASTNode()));
                 }
                 ASTNode::Array(arr)
-            },
+            }
             VarValues::Map(value) => {
                 let mut map = HashMap::new();
                 for (k, v) in value {
@@ -304,10 +314,10 @@ impl FromStr for VarValues {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.starts_with("["){
+        if s.starts_with("[") {
             // Is Array
             let mut arr: Vec<VarValues> = Vec::new();
-            for v in s[1..s.len() - 1].split(","){
+            for v in s[1..s.len() - 1].split(",") {
                 arr.push(VarValues::from_str(v).unwrap());
             }
             return Ok(VarValues::Array(arr));
@@ -316,53 +326,57 @@ impl FromStr for VarValues {
             // Is Map
             // E.g. {a: 1, b: 2}
             let mut map: HashMap<String, VarValues> = HashMap::new();
-            for v in s[1..s.len() - 1].split(","){
+            for v in s[1..s.len() - 1].split(",") {
                 let kv = v.split(":").collect::<Vec<&str>>();
-                map.insert(kv[0].to_string(), VarValues::from_str(kv[1].trim()).unwrap());
+                map.insert(
+                    kv[0].to_string(),
+                    VarValues::from_str(kv[1].trim()).unwrap(),
+                );
             }
             return Ok(VarValues::Map(map));
         }
         match s.parse::<u256>() {
             Ok(value) => Ok(VarValues::Number(value)),
-            Err(_) => {
-                match s.parse::<i256>() {
-                    Ok(value) => Ok(VarValues::SignedNumber(value)),
-                    Err(_) => match s.parse::<bool>() {
-                        Ok(value) => Ok(VarValues::Bool(value)),
-                        Err(_) => Ok(VarValues::String(s.to_owned())),
-                    }
-                }
-            }
+            Err(_) => match s.parse::<i256>() {
+                Ok(value) => Ok(VarValues::SignedNumber(value)),
+                Err(_) => match s.parse::<bool>() {
+                    Ok(value) => Ok(VarValues::Bool(value)),
+                    Err(_) => Ok(VarValues::String(s.to_owned())),
+                },
+            },
         }
     }
 }
 
 impl From<&str> for VarValues {
     fn from(value: &str) -> Self {
-        if value.starts_with("u256:"){
+        if value.starts_with("u256:") {
             return VarValues::Number(u256::from_str_radix(&value[5..], 10).unwrap());
         }
-        if value.starts_with("i256:"){
+        if value.starts_with("i256:") {
             return VarValues::SignedNumber(i256::from_str_radix(&value[5..], 10).unwrap());
         }
-        if value.starts_with("["){
-            let v = value[1..value.len()-1].split(",").collect::<Vec<&str>>();
-            let res = v.iter().map(|x| VarValues::from(*x)).collect::<Vec<VarValues>>();
+        if value.starts_with("[") {
+            let v = value[1..value.len() - 1].split(",").collect::<Vec<&str>>();
+            let res = v
+                .iter()
+                .map(|x| VarValues::from(*x))
+                .collect::<Vec<VarValues>>();
             return VarValues::Array(res);
         }
-        if value.starts_with('{'){
-            let v = value[1..value.len()-1].split(",").collect::<Vec<&str>>();
+        if value.starts_with('{') {
+            let v = value[1..value.len() - 1].split(",").collect::<Vec<&str>>();
             let mut map = HashMap::new();
-            for val in v{
+            for val in v {
                 let kv = val.split(":").collect::<Vec<&str>>();
                 map.insert(kv[0].to_string(), VarValues::from(kv[1].trim()));
             }
             return VarValues::Map(map);
         }
-        if value.parse::<u256>().is_ok(){
+        if value.parse::<u256>().is_ok() {
             return VarValues::Number(value.parse::<u256>().unwrap());
         }
-        if value.parse::<i256>().is_ok(){
+        if value.parse::<i256>().is_ok() {
             return VarValues::SignedNumber(value.parse::<i256>().unwrap());
         }
         VarValues::String(value.to_owned())
@@ -431,15 +445,18 @@ impl From<&str> for VarValues {
 
 impl From<String> for VarValues {
     fn from(s: String) -> Self {
-        if s.starts_with("u256:"){
+        if s.starts_with("u256:") {
             return VarValues::Number(u256::from_str_radix(&s[5..], 10).unwrap());
         }
-        if s.starts_with("i256:"){
+        if s.starts_with("i256:") {
             return VarValues::SignedNumber(i256::from_str_radix(&s[5..], 10).unwrap());
         }
-        if s.starts_with("["){
-            let v = s[1..s.len()-1].split(",").collect::<Vec<&str>>();
-            let res = v.iter().map(|x| VarValues::from(*x)).collect::<Vec<VarValues>>();
+        if s.starts_with("[") {
+            let v = s[1..s.len() - 1].split(",").collect::<Vec<&str>>();
+            let res = v
+                .iter()
+                .map(|x| VarValues::from(*x))
+                .collect::<Vec<VarValues>>();
             return VarValues::Array(res);
         }
         VarValues::String(s.to_owned())
@@ -495,41 +512,45 @@ impl From<Value> for VarValues {
             Value::Number(s) => {
                 if s.is_i64() {
                     VarValues::SignedNumber(s.as_i64().unwrap().as_i256())
-                }else{
+                } else {
                     VarValues::Number(s.as_u64().unwrap().as_u256())
                 }
-            },
+            }
             Value::Bool(s) => VarValues::Bool(s),
             Value::Array(s) => {
                 let mut arr = Vec::new();
 
-                for v in s{
+                for v in s {
                     arr.push(VarValues::from(v));
                 }
                 VarValues::Array(arr)
-            },
+            }
             Value::Object(map) => {
                 let mut new_map = HashMap::new();
-                for (key, value) in map{
+                for (key, value) in map {
                     new_map.insert(key, VarValues::from(value));
                 }
                 VarValues::Map(new_map)
-            },
+            }
             _ => VarValues::String(s.to_string()),
         }
     }
 }
 
-impl<T: Clone> From<HashMap<String, T>> for VarValues 
-where VarValues: From<T>
+impl<T: Clone> From<HashMap<String, T>> for VarValues
+where
+    VarValues: From<T>,
 {
     fn from(map: HashMap<String, T>) -> Self {
-        let new_map = map.iter().map(|(key, value)| (key.clone(), VarValues::from(value.clone()))).collect();
+        let new_map = map
+            .iter()
+            .map(|(key, value)| (key.clone(), VarValues::from(value.clone())))
+            .collect();
         VarValues::Map(new_map)
     }
 }
 
-impl<T: Clone, const N: usize> From<[T; N]> for VarValues 
+impl<T: Clone, const N: usize> From<[T; N]> for VarValues
 where
     VarValues: From<T>,
 {
@@ -538,7 +559,7 @@ where
     }
 }
 
-impl From<ASTConstant> for VarValues{
+impl From<ASTConstant> for VarValues {
     fn from(s: ASTConstant) -> Self {
         match s {
             ASTConstant::String(s) => VarValues::String(s),
@@ -560,7 +581,7 @@ where
         VarValues::Array(v.iter().map(|x| VarValues::from(x.clone())).collect())
     }
 }
-    
+
 impl PartialEq<str> for VarValues {
     fn eq(&self, other: &str) -> bool {
         match self {
@@ -632,17 +653,31 @@ pub fn list_variables(map: &VariableMap) -> Vec<String> {
 
 pub fn print_variables(map: &VariableMap) {
     for (key, value) in map {
-        println!("{}: {:?}", key.fg::<LightCaribbeanGreen>(), value.fg::<LightAnakiwaBlue>());
+        println!(
+            "{}: {:?}",
+            key.fg::<LightCaribbeanGreen>(),
+            value.fg::<LightAnakiwaBlue>()
+        );
     }
 }
+
+// static mut VARMAPS: Vec<VariableMap> = Vec::new();
+// pub fn list_var_maps() {
+//     unsafe {
+//         for map in VARMAPS.iter() {
+//             println!("{:p}", map);
+//         }
+//     }
+// }
 
 pub fn get_variable_map_instance() -> &'static mut VariableMap {
     static mut MAYBE: MaybeUninit<VariableMap> = MaybeUninit::uninit();
     static ONLY: std::sync::Once = Once::new();
 
-    unsafe{
+    unsafe {
         ONLY.call_once(|| {
             let var_map = VariableMap::new();
+            // VARMAPS.push(var_map.clone());
             MAYBE.write(var_map);
         });
         MAYBE.assume_init_mut()
@@ -650,15 +685,16 @@ pub fn get_variable_map_instance() -> &'static mut VariableMap {
 }
 
 // Set Variable in the VariableMap
-pub fn set_variable<T: GetVar<T>>(map: &mut VariableMap, key: &str, value: T) 
-where VarValues: From<T>
+pub fn set_variable<T: GetVar<T>>(map: &mut VariableMap, key: &str, value: T)
+where
+    VarValues: From<T>,
 {
     let v = VarValues::from(value);
     map.insert(key.to_owned(), v);
 }
 
 #[macro_export]
-macro_rules! set_var{
+macro_rules! set_var {
     ($key:expr, $value:expr) => {
         let value: VarValues = VarValues::from($value);
         get_variable_map_instance().insert($key.to_owned(), value);
@@ -668,9 +704,9 @@ macro_rules! set_var{
 #[macro_export]
 macro_rules! get_var {
     ($key:expr) => {
-        match get_variable_map_instance().get($key){
+        match get_variable_map_instance().get($key) {
             Some(value) => Some(value.clone()),
-            None => None
+            None => None,
         }
     };
 
@@ -682,53 +718,53 @@ macro_rules! get_var {
     };
 
     (value $key:expr) => {
-        match get_variable_map_instance().get($key){
+        match get_variable_map_instance().get($key) {
             Some(value) => Some(value.get_value()),
-            None => None
+            None => None,
         }
     };
 
     ($key:expr) => {
-        match get_variable_map_instance().get($key){
+        match get_variable_map_instance().get($key) {
             Some(value) => Some(value.clone()),
-            None => None
+            None => None,
         }
     };
 
     (i256 $key:expr) => {
-        match get_variable_map_instance().get($key){
+        match get_variable_map_instance().get($key) {
             Some(value) => Some(i256::get_value(value.clone()).unwrap()),
-            None => None
+            None => None,
         }
     };
 
     (u256 $key:expr) => {
-        match get_variable_map_instance().get($key){
+        match get_variable_map_instance().get($key) {
             Some(value) => Some(u256::get_value(value.clone()).unwrap()),
-            None => None
+            None => None,
         }
     };
 
     (bool $key:expr) => {
-        match get_variable_map_instance().get($key){
+        match get_variable_map_instance().get($key) {
             Some(value) => Some(bool::get_value(value.clone()).unwrap()),
-            None => None
+            None => None,
         }
     };
 
     (String $key:expr) => {
-        match get_variable_map_instance().get($key){
+        match get_variable_map_instance().get($key) {
             Some(value) => Some(String::get_value(value.clone()).unwrap()),
-            None => None
+            None => None,
         }
     };
 
     (Array $key:expr) => {
-        match get_variable_map_instance().get($key){
+        match get_variable_map_instance().get($key) {
             Some(value) => Some(Vec::get_value(value.clone()).unwrap()),
-            None => None
+            None => None,
         }
-    }
+    };
 }
 
 #[test]
@@ -754,8 +790,11 @@ fn test_set_get_var() {
 #[test]
 fn test_var_types() {
     set_var!("a", 15);
-    
-    println!("{:?}", get_variable_map_instance().get("a").unwrap().get_type());
+
+    println!(
+        "{:?}",
+        get_variable_map_instance().get("a").unwrap().get_type()
+    );
 
     let a: i256 = get_var::<i256>(&get_variable_map_instance(), "a").unwrap();
 
@@ -768,7 +807,7 @@ fn test_unknown_var() {
 }
 
 #[test]
-fn test_typing(){
+fn test_typing() {
     set_var!("a", 15);
     let a = get_var!(i256 "a").expect("Value not found");
     assert_eq!(a, 15);
@@ -784,7 +823,7 @@ fn test_typing(){
     let d = get_var!(String "d").expect("Value not found");
     assert_eq!(d, "String");
 
-    let v = vec![1,2,3];
+    let v = vec![1, 2, 3];
     set_var!("e", v.clone());
     let e: Vec<i32> = get_var!(Array "e").expect("Value not found");
     assert_eq!(e, v);
@@ -802,7 +841,7 @@ fn test_var_u256() {
 
 #[test]
 fn test_keystore() {
-    set_var!("keystore", [0,1,2,3]);
+    set_var!("keystore", [0, 1, 2, 3]);
     let keystore: VarValues = get_var!("keystore").expect("Value not found");
 
     println!("{:?}", get_variable_map_instance());
@@ -816,7 +855,7 @@ fn test_keystore() {
 }
 
 #[test]
-fn test_hashmaps(){
+fn test_hashmaps() {
     set_var!("hashmap", "{some_key: 150001, another_key: hello_world}");
 
     let hashmap: VarValues = get_var!("hashmap").expect("Value not found");
@@ -824,21 +863,19 @@ fn test_hashmaps(){
 
     let mut map: HashMap<String, VarValues> = HashMap::get_value(hashmap).unwrap();
     println!("{:?}", map);
-    map.insert("test".to_string(), VarValues::from(vec![1,2,3,4]));
+    map.insert("test".to_string(), VarValues::from(vec![1, 2, 3, 4]));
 
     println!("{:?}", get_var!("hashmap").unwrap());
 
     set_var!("hashmap", map.clone());
 
     println!("{:?}", get_var!("hashmap").unwrap());
-
 }
 
 #[test]
-fn test_clear_map(){
-
+fn test_clear_map() {
     set_var!("delete_me", 1);
-    
+
     // Setup persistent keystore
     set_var!("keystore", VarValues::Array(vec![]));
 
