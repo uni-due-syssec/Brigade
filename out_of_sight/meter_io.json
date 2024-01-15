@@ -1,0 +1,19 @@
+{
+    "event": "Deposit(uint8,bytes32,uint64)",
+    "chain_name": "ethereum",
+    "properties": {
+        "function_signature": "0x84db809f",
+        "resource_id": "28dbc9a2e2791ea693d5f4854850b9a2c298582d7f5b50257ef638ddaac30b5b",
+        "calldata": "$function_signature.push($resource_id)",
+        "hex_block_number": "$ethereum_block_number.as(hex)",
+        "handler_address_full": "ethereum.call_method($calldata, $meterio_contract, $hex_block_number).result",
+        "handler_address": "$handler_address_full.slice(26, 66).as(hex)",
+        "handler_signature": "0x0a6d55d8",
+        "token_calldata": "$handler_signature.push($resource_id)",
+        "token_address_full": "ethereum.call_method($token_calldata, $handler_address, $hex_block_number).result",
+        "token_address": "$token_address_full.slice(26, 66).as(hex)"
+    },
+    "pattern": [
+        "$token_address != 0x0"
+    ]
+}

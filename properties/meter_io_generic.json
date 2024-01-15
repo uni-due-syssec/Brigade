@@ -1,0 +1,18 @@
+{
+    "event": "0xdbb69440df8433824a026ef190652f29929eb64b4d1d5d2a69be8afe3e6eaed8",
+    "chain_name": "ethereum",
+    "properties": { 
+        "resource_id": "call(ethereum, get_transaction_by_hash, [$transaction_hash]).get(result).get(input).slice(74,138).as(hex)",
+        "handler_calldata": "0x84db809f.push($resource_id.slice(2,66)).as(hex)",
+        "handler_address": "call(ethereum, call_method, [$handler_calldata, $meterio_contract, $ethereum_block_number.as(hex)]).get(result).as(address)",
+        "get_calldata": "0x0a6d55d8.push($resource_id.slice(2,66)).as(hex)",
+        "token_address": "call(ethereum, call_method, [$get_calldata, $handler_address, $ethereum_block_number.as(hex)]).get(result).as(address)",
+        "token_amount": "call(ethereum, get_transaction_by_hash, [$transaction_hash]).get(result).get(input).slice(266,330).as(u256)",
+        "call_data": "0x70a08231000000000000000000000000.push($handler_address.slice(2,42))",
+        "self_balance_after": "call(ethereum, call_method, [$call_data, $token_address, $ethereum_block_number.as(hex)]).get(result).as(u256)",
+        "self_balance_before": "call(ethereum, call_method, [$call_data, $token_address, ($ethereum_block_number - 1).as(hex)]).get(result).as(u256)"
+    },
+    "pattern": [
+        "$self_balance_before + $token_amount == $self_balance_after"
+    ]
+}
