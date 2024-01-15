@@ -6,6 +6,6 @@
         "contract_address": "$to_contract.as(address).toLower()"
     },
     "pattern": [
-        "$keystore.contains($contract_address) == false"
+        "$contract_address != $polynetwork_contract"
     ]
 }
