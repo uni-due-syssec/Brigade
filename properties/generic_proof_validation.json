@@ -2,7 +2,7 @@
     "event": "IncompleteVerification(uint256,bytes32)",
     "chain_name": "ethereum",
     "properties": { 
-        "input_data": "ethereum.get_transaction_by_hash($transaction_hash).result.input",
+        "input_data": "call(ethereum, get_transaction_by_hash, [$transaction_hash]).get(result).get(input)",
         "receiver": "$input_data.slice(162, 202).as(address)",
         "proof": "$input_data.slice(10, 74).as(hex)"
     },

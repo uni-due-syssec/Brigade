@@ -275,6 +275,9 @@ impl ASTConstant {
                     ASTConstant::Number(v) => Ok(ASTConstant::Number(*v)),
                     ASTConstant::SignedNumber(v) => Ok(ASTConstant::SignedNumber(*v)),
                     ASTConstant::String(v) => {
+                        if v == "0x" {
+                            return Err(ASTError::InvalidNumberConversion(v.clone()));
+                        }
                         if v.starts_with("0x") {
                             Ok(ASTConstant::Number(u256::from_str_hex(v).unwrap()))
                         } else if v.starts_with("u256:") || v.starts_with("i256:") {
@@ -363,6 +366,8 @@ impl ASTConstant {
                     if v.starts_with("0x") {
                         unprefixed_addr = &v[2..];
                     }
+                    unprefixed_addr = unprefixed_addr.trim_start_matches('0');
+
                     let missing_zeros = 40 - unprefixed_addr.len();
                     resulting_address += "0x";
                     resulting_address.push_str(&"0".repeat(missing_zeros));
@@ -608,16 +613,21 @@ impl ASTNode {
                         // Convert string to number
                         match right {
                             ASTConstant::Number(r) => {
-                                let val = left_clone.convert(ConversionTarget::Number).unwrap();
-                                let val_node = ASTNode::ConstantNumber(
-                                    u256::from_str(val.get_value().as_str()).unwrap(),
-                                );
-                                ASTNode::BinaryArithmetic(
-                                    operator.clone(),
-                                    Box::new(val_node),
-                                    Box::new(ASTNode::ConstantNumber(r)),
-                                )
-                                .evaluate()
+                                let conv = left_clone.convert(ConversionTarget::Number);
+                                // let val = left_clone.convert(ConversionTarget::Number).unwrap();
+                                if let Ok(val) = conv {
+                                    let val_node = ASTNode::ConstantNumber(
+                                        u256::from_str(val.get_value().as_str()).unwrap(),
+                                    );
+                                    ASTNode::BinaryArithmetic(
+                                        operator.clone(),
+                                        Box::new(val_node),
+                                        Box::new(ASTNode::ConstantNumber(r)),
+                                    )
+                                    .evaluate()
+                                } else {
+                                    Err(conv.err().unwrap())
+                                }
                             }
                             ASTConstant::SignedNumber(r) => {
                                 let val =
@@ -1511,9 +1521,7 @@ impl ASTNode {
                             _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
                         }
                     }
-                    ASTConstant::Map(_) => {
-                        unreachable!("Map constants are not supported for logic operations")
-                    }
+                    ASTConstant::Map(_) => Err(ASTError::InvalidBinaryOperator),
                 }
             }
             ASTNode::Function(function_name, args) => {

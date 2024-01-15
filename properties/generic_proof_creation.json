@@ -2,11 +2,9 @@
     "event": "ProofCreated(bytes32,address)",
     "chain_name": "ethereum",
     "properties": { 
-        "input_data": "ethereum.get_transaction_by_hash($transaction_hash).result.input",
-        "receiver": "$input_data.slice(34, 74).as(address)",
-        "function_selector": "0x89ee6bcf000000000000000000000000",
-        "calldata": "$function_selector.push($payer_address.slice(2,42))",
-        "proof": "ethereum.call_method($calldata, $poc2_contract, $ethereum_block_number.as(hex)).result"
+        "receiver": "call(ethereum, get_transaction_by_hash, [$transaction_hash]).get(result).get(input).slice(34, 74).as(address)",
+        "calldata": "0x89ee6bcf000000000000000000000000.push($payer_address.slice(2,42))",
+        "proof": "call(ethereum, call_method, [$calldata, $poc2_contract, $ethereum_block_number.as(hex)]).get(result)"
     },
     "pattern": ["$map.insert($receiver, $proof)"]
 }

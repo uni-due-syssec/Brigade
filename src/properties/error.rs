@@ -40,14 +40,16 @@ pub enum ASTError {
     EmptyArray,
     #[error("unexpected JSON Format.")]
     ExpectedJSON,
+    #[error("the value {0} is not a number")]
+    InvalidNumberConversion(String),
 }
 
 #[derive(Error, Debug)]
 pub enum PropertyError {
     #[error("the property is invalid")]
-    InvalidProperty,  
+    InvalidProperty,
     #[error("the fieldname {0} does not exist in response {1}.\nMaybe there is something wrong with the request? {2}")]
-    FieldNotFound(String, String, String), 
+    FieldNotFound(String, String, String),
     #[error("the property is not found")]
     PropertyNotFound,
     #[error("cyclic dependencies detected")]
