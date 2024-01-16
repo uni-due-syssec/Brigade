@@ -3,9 +3,10 @@
     "chain_name": "ethereum",
     "properties": {
         "to_contract": "$event_data.slice(322, 362).as(hex)",
-        "contract_address": "$to_contract.as(address).toLower()"
+        "contract_address": "$to_contract.as(address).toLower()",
+        "protected_contract": "0x071b8f8f375A1932BAAF356BcA98aAC0128bf5bf.as(address).toLower()"
     },
     "pattern": [
-        "$contract_address != $polynetwork_contract"
+        "$contract_address != $protected_contract"
     ]
 }

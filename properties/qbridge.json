@@ -2,17 +2,17 @@
     "event": "Deposit(uint8,bytes32,uint64,address,bytes)",
     "chain_name": "ethereum",
     "properties": {
-        "function_signature": "0xacc1b42e",
-        "resource_id": "$event_data.slice(66, 130)",
-        "calldata": "$function_signature.push($resource_id)",
-        "handler_address_full": "ethereum.call_method($calldata, $qbridge_contract, $ethereum_block_number.as(hex)).result",
-        "handler_address": "$handler_address_full.slice(26, 66).as(hex)",
-        "handler_signature": "0x35d0d5dc",
-        "token_calldata": "$handler_signature.push($resource_id)",
-        "token_address_full": "ethereum.call_method($token_calldata, $handler_address, $ethereum_block_number.as(hex)).result",
-        "token_address": "$token_address_full.slice(26, 66).as(hex)"
+        "resource_id": "$event_data.slice(66, 130).as(hex)",
+        "handler_calldata": "0xacc1b42e.push($resource_id.slice(2,66)).as(hex)",
+        "handler_address": "call(ethereum, call_method, [$handler_calldata, $qbridge_contract, $ethereum_block_number.as(hex)]).get(result).as(address)",
+        "token_calldata": "0x35d0d5dc.push($resource_id.slice(2,66)).as(hex)",
+        "token_address": "call(ethereum, call_method, [$token_calldata, $handler_address, $ethereum_block_number.as(hex)]).get(result).as(address)",
+        "call_data": "0x70a08231000000000000000000000000.push($handler_address.slice(2,42))",
+        "self_balance_after": "call(ethereum, call_method, [$call_data, $token_address, $ethereum_block_number.as(hex)]).get(result).as(u256)",
+        "self_balance_before": "call(ethereum, call_method, [$call_data, $token_address, ($ethereum_block_number - 1).as(hex)]).get(result).as(u256)",
+        "token_amount": "$event_data.slice(386,450).as(u256)"
     },
     "pattern": [
-        "$token_address != 0x0"
+        "$self_balance_before + $token_amount == $self_balance_after"
     ]
 }
