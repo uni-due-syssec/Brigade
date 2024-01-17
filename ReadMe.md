@@ -94,6 +94,9 @@ However, by using the `at()` function only one index is used.
       The folder functions/connection/ needs a connection.json that specifies the "endpoint" as a JSON argument to the http endpoint of the blockchain.
       The function itself specifies the RPC method to call and indicates a variable by a leading '$'-sign.
       Returns a map that can be queried with the get method
+13. `Require()`
+    - `require(condition, statement)`
+    - Execute a statement under a condition or return false if the condition fails
 
 > Note: Sometimes functions return strings but the context needs the result to be a boolean. Therefore, string can be compared with a boolean true to evaluate to true: `$str.push(a) && true`
 
