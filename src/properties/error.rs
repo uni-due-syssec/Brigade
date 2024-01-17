@@ -46,6 +46,8 @@ pub enum ASTError {
     InvalidCustomCall(String, String),
     #[error("function {0} is missing an argument: {1}")]
     MissingArgument(String, String),
+    #[error("require statement errored with: {0}")]
+    RequireError(String),
 }
 
 #[derive(Error, Debug)]

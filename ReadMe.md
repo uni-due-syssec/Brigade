@@ -97,6 +97,7 @@ However, by using the `at()` function only one index is used.
 13. `Require()`
     - `require(condition, statement)`
     - Execute a statement under a condition or return false if the condition fails
+    - more complex conditions have to be wrapped in parenthesis
 
 > Note: Sometimes functions return strings but the context needs the result to be a boolean. Therefore, string can be compared with a boolean true to evaluate to true: `$str.push(a) && true`
 

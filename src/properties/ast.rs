@@ -1613,10 +1613,14 @@ impl ASTNode {
                         let end = args[2].evaluate()?;
 
                         let start_index = start
+                            .convert(ConversionTarget::Number)
+                            .unwrap()
                             .get_value()
                             .parse::<usize>()
                             .expect("start index must be an integer");
                         let end_index = end
+                            .convert(ConversionTarget::Number)
+                            .unwrap()
                             .get_value()
                             .parse::<usize>()
                             .expect("end index must be an integer");
@@ -2000,7 +2004,7 @@ impl ASTNode {
                                     Ok(ASTConstant::Bool(false))
                                 }
                             }
-                            Err(e) => Err(e),
+                            Err(e) => Err(ASTError::RequireError(e.to_string())),
                         }
                     }
                 }
@@ -2659,6 +2663,8 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
                     Functions::Require => {
                         if let Some(arg_1) = stack.pop() {
                             if let Some(arg_0) = stack.pop() {
+                                println!("Arg 0: {:?}", arg_0);
+                                println!("Arg 1: {:?}", arg_1);
                                 let node = ASTNode::Function(
                                     Functions::Require,
                                     vec![Box::new(arg_0), Box::new(arg_1)],
@@ -4030,11 +4036,11 @@ mod test_ast {
     fn test_require() {
         let mut map: HashMap<String, VarValues> = HashMap::new();
         set_var!("map", VarValues::Map(map));
-        build_ast_root("$map.insert(a, true)")
+        build_ast_root("$map.insert(0xa58a9d3a5e240b09da3bc0bfc011af3d20d31763,0xf8e81d47203a594245e36c48e151709f0c19fbe8)")
             .unwrap()
             .evaluate()
             .unwrap();
-        let root = build_ast_root("require($map.get(a) == true, $map.remove(a))").unwrap();
+        let root = build_ast_root("require(($map.get(0xa58a9d3a5e240b09da3bc0bfc011af3d20d31763) == 0xf8e81d47203a594245e36c48e151709f0c19fbe8), $map.remove(0xa58a9d3a5e240b09da3bc0bfc011af3d20d31763) == 0xf8e81d47203a594245e36c48e151709f0c19fbe8)").unwrap();
         let val = root.evaluate().unwrap();
         println!("{}", val.get_value());
 
