@@ -1,0 +1,12 @@
+{
+    "event": "EVENT: signature is verified",
+    "chain_name": "solana",
+    "properties": { 
+        "instruction": "call(solana, get_transaction, [$transaction_hash]).get(result).get(transaction).get(message).get(instructions).at(0)",
+        "payer": "$instruction.get(accounts).at(0)",
+        "data": "$instruction.get(data).as(hex)"
+    },
+    "pattern": [
+        "require($map.get($payer) == $data, $map.remove($payer))"
+    ]
+}
