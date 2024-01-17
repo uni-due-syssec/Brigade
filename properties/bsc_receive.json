@@ -9,6 +9,6 @@
     },
     "pattern": 
        [
-        "$map.remove($package) == $payload"
+        "require($map.get($package) == $payload, $map.remove($package))"
     ]
 }

@@ -142,6 +142,7 @@ pub enum Functions {
     ToLower, // Transform String into lower case
     ToUpper, // Transform String into upper case
     Custom, // RPC Calls into a Blockchain
+    Require, // Require a condition to execute a statement require(cond, stmt)
 }
 
 impl Functions {
@@ -161,6 +162,7 @@ impl Functions {
             Functions::ToLower => "tolower",
             Functions::ToUpper => "toupper",
             Functions::Custom => "call",
+            Functions::Require => "require",
         }
     }
 
@@ -180,6 +182,7 @@ impl Functions {
             "tolower" | "toLower" => Ok(Functions::ToLower),
             "toupper" | "toUpper" => Ok(Functions::ToUpper),
             "call" => Ok(Functions::Custom),
+            "require" => Ok(Functions::Require),
             _ => Err(ASTError::InvalidFunction(string.to_owned())),
         }
     }
@@ -346,10 +349,18 @@ impl ASTConstant {
                             // Add the prefix to already correct hex_strings. Check if correct hex number
                             match u256::from_str_radix(v, 16) {
                                 Ok(v) => Ok(ASTConstant::String(format!("0x{:x}", v))),
-                                Err(e) => Err(ASTError::InvalidConversion(
-                                    v.to_string(),
-                                    "hex".to_string(),
-                                )),
+                                Err(e) => {
+                                    // Check if other encoding:
+                                    match bs58::decode(v).into_vec() {
+                                        Ok(v) => {
+                                            Ok(ASTConstant::String(format!("0x{}", hex::encode(v))))
+                                        }
+                                        Err(e) => Err(ASTError::InvalidConversion(
+                                            v.to_string(),
+                                            "hex".to_string(),
+                                        )),
+                                    }
+                                }
                             }
                         }
                     }
@@ -1973,6 +1984,25 @@ impl ASTNode {
                             Err(e) => Err(ASTError::ExpectedJSON),
                         }
                     }
+                    Functions::Require => {
+                        let cond = args[0].evaluate();
+                        match cond {
+                            Ok(v) => {
+                                if v.get_value() == "true" {
+                                    // If condition is true: execute statement
+                                    let stmt = args[1].evaluate();
+                                    match stmt {
+                                        Ok(v) => Ok(v),
+                                        Err(e) => Err(e),
+                                    }
+                                } else {
+                                    // else return false
+                                    Ok(ASTConstant::Bool(false))
+                                }
+                            }
+                            Err(e) => Err(e),
+                        }
+                    }
                 }
             }
             ASTNode::Array(val) => {
@@ -2569,10 +2599,7 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
                     }
                     Functions::Custom => {
                         // Not known in the beginning.
-                        // unimplemented!("Custom functions not yet implemented");
-
                         // First find out the target blockchain
-
                         // Get to the endpoint which is a valid path to the connection.json
                         let mut args_node: Vec<ASTNode> = vec![];
 
@@ -2580,32 +2607,75 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
                             let arg = stack.pop().unwrap();
                             args_node.push(arg.clone());
 
-                            // Check if is target
-                            let f = format!(
-                                "functions/{}/connection.json",
-                                arg.evaluate().unwrap().get_value()
-                            );
-                            let p = Path::new(&f);
-                            if p.exists() {
-                                let contents = fs::read_to_string(p)
-                                    .expect("File not found or unable to read file");
-                                let json: Value = serde_json::from_str(&contents)
-                                    .expect("JSON was not well-formatted");
-                                let endpoint = json["endpoint"].as_str().unwrap();
+                            match arg.evaluate() {
+                                Ok(a) => {
+                                    // Check if is target
+                                    let f = format!("functions/{}/connection.json", a.get_value());
+                                    let p = Path::new(&f);
+                                    if p.exists() {
+                                        let contents = fs::read_to_string(p)
+                                            .expect("File not found or unable to read file");
+                                        let json: Value = serde_json::from_str(&contents)
+                                            .expect("JSON was not well-formatted");
+                                        let endpoint = json["endpoint"].as_str().unwrap();
 
-                                args_node.reverse();
+                                        args_node.reverse();
 
-                                let args = args_node.iter().map(|x| Box::new(x.clone())).collect();
+                                        let args =
+                                            args_node.iter().map(|x| Box::new(x.clone())).collect();
 
-                                let node = ASTNode::Function(Functions::Custom, args);
-                                ast_vec.push(node.clone());
-                                stack.push(node);
-                                break;
+                                        let node = ASTNode::Function(Functions::Custom, args);
+                                        ast_vec.push(node.clone());
+                                        stack.push(node);
+                                        break;
+                                    }
+                                }
+                                Err(e) => {
+                                    args_node.reverse();
+                                    let args: Vec<Box<ASTNode>> =
+                                        args_node.iter().map(|x| Box::new(x.clone())).collect();
+                                    match args_node[1].evaluate() {
+                                        Ok(a) => {
+                                            return Err(ASTError::InvalidCustomCall(
+                                                args_node[1].evaluate().unwrap().get_value(),
+                                                e.to_string(),
+                                            ))
+                                        }
+                                        Err(e) => {
+                                            return Err(ASTError::InvalidCustomCall(
+                                                "Custom".to_string(),
+                                                e.to_string(),
+                                            ))
+                                        }
+                                    }
+                                }
                             }
                         }
                         if stack.is_empty() {
                             // Stack is empty and no valid path found
                             return Err(ASTError::InvalidFunction("call()".to_string()));
+                        }
+                    }
+                    Functions::Require => {
+                        if let Some(arg_1) = stack.pop() {
+                            if let Some(arg_0) = stack.pop() {
+                                let node = ASTNode::Function(
+                                    Functions::Require,
+                                    vec![Box::new(arg_0), Box::new(arg_1)],
+                                );
+                                ast_vec.push(node.clone());
+                                stack.push(node);
+                            } else {
+                                return Err(ASTError::MissingArgument(
+                                    "require".to_string(),
+                                    "lhs can not be empty".to_string(),
+                                ));
+                            }
+                        } else {
+                            return Err(ASTError::MissingArgument(
+                                "require".to_string(),
+                                "rhs can not be empty".to_string(),
+                            ));
                         }
                     }
                 }
@@ -3954,5 +4024,20 @@ mod test_ast {
 
         let val = root.evaluate().unwrap();
         println!("{}", val.get_value());
+    }
+
+    #[test]
+    fn test_require() {
+        let mut map: HashMap<String, VarValues> = HashMap::new();
+        set_var!("map", VarValues::Map(map));
+        build_ast_root("$map.insert(a, true)")
+            .unwrap()
+            .evaluate()
+            .unwrap();
+        let root = build_ast_root("require($map.get(a) == true, $map.remove(a))").unwrap();
+        let val = root.evaluate().unwrap();
+        println!("{}", val.get_value());
+
+        print_variables(&get_variable_map_instance());
     }
 }

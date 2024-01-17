@@ -33,3 +33,4 @@ owo-colors = "3.5.0"
 hex = "0.4.3"
 clap = { version = "4.3.21", features = ["derive"] }
 chrono = "0.4"
+bs58 = "0.5.0"

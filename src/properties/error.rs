@@ -42,6 +42,10 @@ pub enum ASTError {
     ExpectedJSON,
     #[error("the value {0} is not a number")]
     InvalidNumberConversion(String),
+    #[error("the call to {0} is not possible: {1}")]
+    InvalidCustomCall(String, String),
+    #[error("function {0} is missing an argument: {1}")]
+    MissingArgument(String, String),
 }
 
 #[derive(Error, Debug)]
