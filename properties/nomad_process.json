@@ -4,8 +4,7 @@
     "properties": {
         "input_data": "call(ethereum, get_transaction_by_hash, [$transaction_hash]).get(result).get(input)",
         "recipient": "$input_data.slice(364, 428).as(address)",
-        "sender": "$input_data.slice(146, 210).as(address)",
-        "ins": "$map.insert($recipient, $sender)"
+        "sender": "$input_data.slice(146, 210).as(address)"
     },
     "pattern": [
         "require(($map.get($recipient) == $sender), $map.remove($recipient) == 0xf8e81d47203a594245e36c48e151709f0c19fbe8)"
