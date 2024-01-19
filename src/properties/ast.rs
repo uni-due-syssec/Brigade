@@ -823,14 +823,40 @@ impl ASTNode {
                     ASTConstant::Number(left) => {
                         match right {
                             ASTConstant::Number(right) => match operator {
-                                ArithmeticOperator::Add => Ok(ASTConstant::Number(left + right)),
+                                ArithmeticOperator::Add => match u256::checked_add(left, right) {
+                                    Some(value) => Ok(ASTConstant::Number(value)),
+                                    None => Err(ASTError::OverflowError(format!(
+                                        "{} + {}",
+                                        left, right
+                                    ))),
+                                },
                                 ArithmeticOperator::Subtract => {
-                                    Ok(ASTConstant::Number(left - right))
+                                    match u256::checked_sub(left, right) {
+                                        Some(value) => Ok(ASTConstant::Number(value)),
+                                        None => Err(ASTError::OverflowError(format!(
+                                            "{} - {}",
+                                            left, right
+                                        ))),
+                                    }
                                 }
                                 ArithmeticOperator::Multiply => {
-                                    Ok(ASTConstant::Number(left * right))
+                                    match u256::checked_mul(left, right) {
+                                        Some(value) => Ok(ASTConstant::Number(value)),
+                                        None => Err(ASTError::OverflowError(format!(
+                                            "{} * {}",
+                                            left, right
+                                        ))),
+                                    }
                                 }
-                                ArithmeticOperator::Divide => Ok(ASTConstant::Number(left / right)),
+                                ArithmeticOperator::Divide => {
+                                    match u256::checked_div(left, right) {
+                                        Some(value) => Ok(ASTConstant::Number(value)),
+                                        None => Err(ASTError::OverflowError(format!(
+                                            "{} / {}",
+                                            left, right
+                                        ))),
+                                    }
+                                }
                                 ArithmeticOperator::Modulo => Ok(ASTConstant::Number(left % right)),
                                 _ => Err(ASTError::InvalidArithmeticOperator(
                                     operator.to_string().to_owned(),

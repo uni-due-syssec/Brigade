@@ -48,6 +48,8 @@ pub enum ASTError {
     MissingArgument(String, String),
     #[error("require statement errored with: {0}")]
     RequireError(String),
+    #[error("overflow occured: {0}")]
+    OverflowError(String),
 }
 
 #[derive(Error, Debug)]
