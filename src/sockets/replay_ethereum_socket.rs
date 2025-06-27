@@ -20,7 +20,7 @@ pub struct ReplayEthereumSocketHandler { // State of the Client
 impl ReplayEthereumSocketHandler {
     pub fn retrieve_block(&self, block_number: u256) -> Value {
         let call =
-            format!("call(ethereum, get_transaction_by_hash, [{}]).get(result)", block_number); // Blocknumber
+            format!("call(ethereum, trace_replay_block_transactions, [{}]).get(result)", format!("{:#x}",block_number)); // Blocknumber
 
         let root = build_ast_root(call.as_str()).unwrap();
         root.print("");
@@ -174,4 +174,16 @@ fn get_balance_at_block(address: String, block_number: u256) -> u256 {
 pub struct ReplayConfig {
     /// Topics to be subscribed to
     pub topics: Vec<String>,
+}
+
+#[test]
+fn test_replay_config_deser() {
+    let json = r#"{"topics":["0x123456","0x7890ab"]}"#;
+    let config: ReplayConfig = serde_json::from_str(json).unwrap();
+    assert_eq!(config.topics, vec!["0x123456", "0x7890ab"]);
+
+    let json2 = serde_json::to_string(&config).unwrap();
+    assert_eq!(json, json2);
+
+    println!("{:?}", json);
 }

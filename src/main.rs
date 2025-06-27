@@ -231,12 +231,12 @@ fn main() {
 
         let config: replay_ethereum_socket::ReplayConfig = serde_json
             ::from_str(
-                args.replay_config
+                fs::read_to_string(args.replay_config
                     .expect(
                         "Replay config must be provided. See ReplayConfig in replay_ethereum_socket.rs"
                     )
                     .to_str()
-                    .unwrap()
+                    .unwrap()).unwrap().as_str()
             )
             .unwrap();
 
