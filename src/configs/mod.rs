@@ -6,8 +6,7 @@ use serde_json::{json, Value};
 use ws::Result;
 
 use crate::{
-    properties::Properties,
-    sockets::{self, ethereum_socket, socket, solana_socket},
+    message_formats::solana_message::Res, properties::Properties, sockets::{self, ethereum_socket, socket, solana_socket}
 };
 
 pub mod connection;
@@ -75,6 +74,8 @@ impl ChainConfig {
             _ => self.connect_generic(event_channel),
         }
     }
+
+    // TODO: Check for replay if yes then connect to replay handlers
 
     fn connect_generic(&self, event_channel: Sender<Properties>) -> Result<()> {
         let request = json!({

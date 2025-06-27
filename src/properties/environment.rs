@@ -636,6 +636,27 @@ impl PartialOrd<i256> for VarValues {
     }
 }
 
+
+impl From<VarValues> for Value {
+    fn from(v: VarValues) -> Self {
+        match v {
+            VarValues::String(s) => Value::String(s),
+            VarValues::Number(s) => Value::String(format!("0x{:X}", s)),
+            VarValues::SignedNumber(s) => Value::String(format!("0x{:X}", s)),
+            VarValues::Bool(s) => Value::Bool(s),
+            VarValues::Array(s) => Value::Array(s.into_iter().map(|x| Value::from(x)).collect()),
+            VarValues::Map(s) => {
+                let mut new_map = serde_json::Map::new();
+                for (key, value) in s {
+                    new_map.insert(key, Value::from(value));
+                }
+                Value::Object(new_map)
+            }
+        }
+    }
+}
+
+
 pub type VariableMap = HashMap<String, VarValues>;
 
 pub fn get_variable(map: &VariableMap, key: &str) -> Option<ASTNode> {

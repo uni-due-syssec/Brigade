@@ -163,12 +163,18 @@ fn test_topic_ids_ethereum(){
     println!("{}", topic_id);
 }
 
+// TODO: Implement more logs for the evaluation
 #[derive(Debug, Clone, Default)]
 pub struct Evaluation {
     pub id: u64,
     pub event_type: String,
     pub duration: u128,
     pub pattern_duration: u128,
+    pub pattern_type: String,
+    pub contract_address: String,
+    pub msg_sender: String,
+    pub block_number: String,
+    pub msg_value: u256,
 }
 
 impl Evaluation {

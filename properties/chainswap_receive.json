@@ -7,6 +7,6 @@
         "amount": "$event_data.as(u256)"
     },
     "pattern": [
-        "$map.remove($recipient) == $amount"
+        "require(($map.get($recipient) == $amount), $map.remove($recipient) == $amount)"
     ]
 }

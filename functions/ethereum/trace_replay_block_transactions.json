@@ -1,0 +1,6 @@
+{
+    "jsonrpc": "2.0",
+    "method": "trace_replayBlockTransactions",
+    "params": ["$block_number", ["trace"]],
+    "id": "1" 
+}

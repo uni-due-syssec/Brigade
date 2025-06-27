@@ -18,7 +18,7 @@ warn = ["all"]
 run = "sccache cargo run"
 
 [dependencies]
-serde = {version = "1.0.164", features = ["derive"] }
+serde = { version = "1.0.164", features = ["derive"] }
 serde_json = "1.0.99"
 tokio = { version = "1.29.1", features = ["full"] }
 ws = "0.9.2"
@@ -34,3 +34,6 @@ hex = "0.4.3"
 clap = { version = "4.3.21", features = ["derive"] }
 chrono = "0.4"
 bs58 = "0.5.0"
+rand = "0.8.5"
+# isolation_forest = "1.1.0"
+# extended-isolation-forest = "0.2.3"

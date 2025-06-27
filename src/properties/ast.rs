@@ -270,6 +270,13 @@ pub enum ASTConstant {
 }
 
 impl ASTConstant {
+    pub fn get_map(&self) -> &HashMap<String, ASTConstant> {
+        match self {
+            ASTConstant::Map(v) => v,
+            _ => panic!(),
+        }
+    }
+
     pub fn convert(&self, target: ConversionTarget) -> Result<ASTConstant, ASTError> {
         match target {
             ConversionTarget::String => Ok(ASTConstant::String(self.get_value())),

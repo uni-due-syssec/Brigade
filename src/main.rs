@@ -1,37 +1,39 @@
 use configs::ChainConfig;
-use ethnum::{i256, u256};
-use lazy_static::lazy_static;
+use ethnum::{ i256, u256 };
 use owo_colors::colors::css::DarkCyan;
 use owo_colors::OwoColorize;
 use properties::custom_functions::execute_custom_function;
 use properties::Properties;
 use serde_json::Value;
-use sockets::event_socket::{Allowance, BlockingQueue, Event};
-use std::collections::HashMap;
-use std::fs::{File, OpenOptions};
-use std::io::{ErrorKind, Read, Write};
-use std::net::{TcpListener, TcpStream};
+use sockets::event_socket::{ Allowance, BlockingQueue, Event };
+use std::collections::{ HashMap, HashSet };
+use std::fs::{ File, OpenOptions };
+use std::io::{ ErrorKind, Read, Write };
+use std::net::{ TcpListener, TcpStream };
 use std::path::PathBuf;
-use std::sync::atomic::{self, AtomicBool, AtomicU64};
-use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{mpsc, Arc, Mutex};
-use std::time::{Duration, Instant};
-use std::{fs, path::Path};
+use std::sync::atomic::{ self, AtomicBool, AtomicU64 };
+use std::sync::mpsc::{ Receiver, Sender };
+use std::sync::{ mpsc, Arc, Mutex };
+use std::time::{ Duration, Instant };
+use std::{ fs, path::Path };
 
 use properties::ast::*;
 use properties::environment::*;
 use std::str::FromStr;
 
-use std::thread::{self, sleep, JoinHandle};
+use std::thread::{ self, sleep, JoinHandle };
 
 use clap::Parser;
 
-use chrono::{DateTime, Datelike, Local, Timelike};
+use chrono::{ DateTime, Datelike, Local, Timelike };
 
+use crate::inference::ModelFeature;
 use crate::properties::talon::TalonFile;
-use crate::utils::{get_startup_time, Evaluation};
+use crate::sockets::replay_ethereum_socket;
+use crate::utils::{ get_startup_time, Evaluation };
 
 mod configs;
+mod inference;
 mod message_formats;
 mod properties;
 mod sockets;
@@ -39,11 +41,15 @@ mod utils;
 
 static LOG_TIMESTAMPS: AtomicBool = AtomicBool::new(false);
 static LAST_ID: AtomicU64 = AtomicU64::new(0);
+static IS_TRAINED: AtomicBool = AtomicBool::new(false);
+static TRAINED_ON: AtomicU64 = AtomicU64::new(500);
+static ALREADY_TRAINED: AtomicU64 = AtomicU64::new(0);
+const FEATURE_VEC_LENGTH: usize = 10;
 
 /// Arguments to the program
 #[derive(Parser, Debug)]
 #[command(name = "Brigade")]
-#[command(author = "Pascal Winkler <pascal.winkler@uni-due.de>")]
+#[command(author = "Anonymous <anonymous>")]
 #[command(version = "0.1.0")]
 #[command(about = "Brigade secures Cross Chain Bridges", long_about = None)]
 struct Args {
@@ -62,6 +68,21 @@ struct Args {
     /// Log Timestamps for evaluation
     #[arg(short, long)]
     log_timestamps: bool,
+    /// Set number of transactions to train on
+    #[arg(short, long)]
+    train_on: Option<u64>,
+    /// Run in replay mode
+    #[arg(short, long)]
+    replay: bool,
+    /// Starting block for replay
+    #[arg(short, long)]
+    start_block: Option<u256>,
+    /// End block for replay (inclusive)
+    #[arg(short, long)]
+    end_block: Option<u256>,
+    /// Path to replay config
+    #[arg(long)]
+    replay_config: Option<PathBuf>,
 }
 
 fn main() {
@@ -75,6 +96,10 @@ fn main() {
 
     if args.log_timestamps {
         LOG_TIMESTAMPS.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    if args.train_on.is_some() {
+        TRAINED_ON.store(args.train_on.unwrap(), std::sync::atomic::Ordering::Relaxed);
     }
 
     // Log starting point
@@ -155,40 +180,87 @@ fn main() {
     thread_ids.push(event_thread);
     thread_names.lock().unwrap().push("event".to_string());
 
-    // Run through all files in directory dir and print their paths
-    for entry in fs::read_dir(dir).unwrap() {
-        sleep(Duration::from_millis(100));
-        let path = entry.unwrap().path();
-        println!("{}", path.display());
+    if !args.replay {
+        // Run through all files in directory dir and print their paths
+        for entry in fs::read_dir(dir).unwrap() {
+            sleep(Duration::from_millis(100));
+            let path = entry.unwrap().path();
+            println!("{}", path.display());
 
-        // Channel for sending
-        let sender = tx.clone();
+            // Channel for sending
+            let sender = tx.clone();
 
-        let thread_names_clone = Arc::clone(&thread_names);
-        thread_ids.push(thread::spawn(move || {
-            // Deserialize the file contents into a ChainConfig
-            let contents = fs::read_to_string(path.clone()).unwrap();
-            let config: ChainConfig = serde_json::from_str(&contents).unwrap();
+            let thread_names_clone = Arc::clone(&thread_names);
+            thread_ids.push(
+                thread::spawn(move || {
+                    // Deserialize the file contents into a ChainConfig
+                    let contents = fs::read_to_string(path.clone()).unwrap();
+                    let config: ChainConfig = serde_json::from_str(&contents).unwrap();
 
-            let contract_name = path
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .split('_')
-                .collect::<Vec<&str>>()[0];
+                    let contract_name = path
+                        .file_name()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .split('_')
+                        .collect::<Vec<&str>>()[0];
 
-            let cn = contract_name.to_string() + "_contract";
-            set_var!(cn, config.get_contract_address());
+                    let cn = contract_name.to_string() + "_contract";
+                    set_var!(cn, config.get_contract_address());
 
-            thread_names_clone
-                .lock()
-                .unwrap()
-                .push(contract_name.to_string());
+                    thread_names_clone.lock().unwrap().push(contract_name.to_string());
 
-            config.connect(sender).unwrap();
-            println!("Connected to {}", config.get_name());
-        }));
+                    // TODO: if replay then connect_replay instead of connect
+                    // Instead of connecting, we replay the blocks by sending the transaction to replay a block
+                    config.connect(sender).unwrap();
+                    println!("Connected to {}", config.get_name());
+                })
+            );
+        }
+    } else {
+        // Replay mode:
+
+        // Setup blockrange
+        let block_start = args.start_block.expect(
+            "Start block must be provided for replaying transactions"
+        );
+        let block_end = args.end_block.expect(
+            "End block must be provided for replaying transactions"
+        );
+        let mut block_number = block_start;
+
+        let config: replay_ethereum_socket::ReplayConfig = serde_json
+            ::from_str(
+                args.replay_config
+                    .expect(
+                        "Replay config must be provided. See ReplayConfig in replay_ethereum_socket.rs"
+                    )
+                    .to_str()
+                    .unwrap()
+            )
+            .unwrap();
+
+        let topics = HashSet::from_iter(config.topics);
+        // call the replay function and then invoke the replay handler and send the resulting properties via tx to rx
+        let replayer = replay_ethereum_socket::ReplayEthereumSocketHandler {
+            chain_name: "ethereum".to_string(),
+            topics: topics,
+        };
+
+        while block_number <= block_end {
+            // Process Block
+            let block = replayer.retrieve_block(block_number);
+            let txs = replayer.filter_block(block);
+
+            // Send to tx
+            for t in txs {
+                tx.send(t).unwrap();
+            }
+
+            block_number += 1;
+        }
+
+        // TODO: Terminate the program gracefully
     }
 
     // sleep(Duration::from_secs(5));
@@ -238,10 +310,7 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
     // Which Event?
     let event = property.occured_event.clone().unwrap();
     println!("Event: {}", event.blue());
-    println!(
-        "Transaction Hash: {}",
-        property.transaction_hash.clone().unwrap().blue()
-    );
+    println!("Transaction Hash: {}", property.transaction_hash.clone().unwrap().blue());
     println!("Chain: {}", property.src_chain.clone().unwrap().blue());
 
     ev.event_type = event.clone();
@@ -254,17 +323,81 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
     let mut fail_reason: Vec<String> = vec![];
 
     // Process the properties
-    process_json_properties(
-        property.clone(),
-        &mut results,
-        &mut checked_vec,
-        &mut fail_reason,
-    );
+    process_json_properties(property.clone(), &mut results, &mut checked_vec, &mut fail_reason);
+
+    // If all results are true, check the ML model
+    // if results.clone().iter().all(|x| *x) {
+    //     // TODO: Implement ML
+
+    //     // Build a vector of uniform features
+    //     let mut features: Vec<u256> = vec![];
+    //     if let Ok(features_value) = serde_json::from_str::<Value>(
+    //         &fs::read_to_string(Path::new("/properties/features.json")).unwrap_or("".to_string()),
+    //     ) {
+    //         println!(
+    //             "Features: {:?}",
+    //             serde_json::to_string_pretty(&features_value)
+    //         );
+
+    //         if let Some(f) = features_value.get("features") {
+    //             let features_vec = f.as_array().unwrap();
+
+    //             for feature in features_vec {
+    //                 println!("Feature: {}", feature.as_str().unwrap());
+    //                 let v = build_ast_root(feature.as_str().unwrap())
+    //                     .unwrap()
+    //                     .evaluate()
+    //                     .unwrap();
+    //                 println!("Value: {:?}", v);
+
+    //                 if let ASTConstant::Number(n) = v {
+    //                     features.push(n);
+    //                 }
+
+    //                 if let ASTConstant::SignedNumber(n) = v {
+    //                     features.push(n.as_u256());
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     let mut sample: crate::inference::isolation_forest::Sample =
+    //         crate::inference::isolation_forest::Sample { values: vec![] };
+    //     if features.len() > 0 {
+    //         sample = crate::inference::isolation_forest::Sample { values: features };
+    //     }
+
+    //     if ALREADY_TRAINED.load(atomic::Ordering::Relaxed)
+    //         <= TRAINED_ON.load(atomic::Ordering::Relaxed)
+    //         || !IS_TRAINED.load(atomic::Ordering::Relaxed)
+    //     {
+    //         // Put data into new Training Set
+    //         // TODO: Make Training Set
+    //         // Add a sample to the model
+
+    //         // get_current_model()
+    //         //     .current_model
+    //         //     .add_sample("event_name", features);
+
+    //         // Lower TRAINED ON
+    //         let old_val = ALREADY_TRAINED.load(atomic::Ordering::Relaxed);
+    //         let new_val = old_val + 1;
+
+    //         if new_val == TRAINED_ON.load(atomic::Ordering::Relaxed) {
+    //             IS_TRAINED.store(true, atomic::Ordering::Relaxed);
+    //             // TODO: Train the model
+    //             // get_current_model().current_model.train();
+    //         } else {
+    //             ALREADY_TRAINED.store(new_val, atomic::Ordering::Relaxed);
+    //         }
+    //     }
+    //     if IS_TRAINED.load(atomic::Ordering::Relaxed) {
+    //         // TODO: Test the model with the current features
+    //     }
+    // }
 
     // process_talon_code(property.clone(), &mut results, &mut fail_reason);
 
     ev.duration = now.elapsed().as_millis();
-    log_evaluation(ev);
 
     let is_allowed: Allowance = if results.iter().all(|x| *x) {
         Allowance::Allow
@@ -287,24 +420,57 @@ fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> b
      * Some Variables however are needed to be kept for future calls of the property.
      * They can be defined here.
      */
-    map.retain(|k, _| *k == "keystore" || *k == "map" || k.contains("_contract"));
+    map.retain(|k, _| (*k == "keystore" || *k == "map" || k.contains("_contract")));
 
     print_variables(&map);
 
+    // pub contract_address: String,
+    let call = format!(
+        "call({}, get_transaction_by_hash, [{}]).get(result)",
+        property.src_chain.unwrap_or("ethereum".to_string()),
+        property.transaction_hash.clone().unwrap()
+    );
+    let root = build_ast_root(call.as_str()).unwrap();
+    root.print("");
+    let val = root.evaluate().unwrap();
+    println!("{}", val.get_value());
+
+    ev.contract_address = val
+        .get_map()
+        .get("to")
+        .expect("Failed to get 'to' from message")
+        .get_value();
+    // pub msg_sender: String,
+    ev.msg_sender = val
+        .get_map()
+        .get("from")
+        .expect("Failed to get 'from' from message")
+        .get_value();
+    // pub block_number: String,
+    ev.block_number = val
+        .get_map()
+        .get("blockNumber")
+        .expect("Failed to get 'blockNumber' from message")
+        .get_value();
+    // pub msg_value: u256,
+    let v = val.get_map().get("value").expect("Failed to get 'value' from message").get_value();
+    ev.msg_value = u256::from_str_hex(&v).unwrap();
+
+    if fail_reason.len() > 0 {
+        // pub pattern_type: String,
+        ev.pattern_type = fail_reason.join(" AND ").to_string();
+    } else {
+        ev.pattern_type = "allowed".to_string();
+    }
+
+    log_evaluation(ev);
+
     // Check all results and only allow when all are true
     if results.iter().all(|x| *x) {
-        println!(
-            "{} transaction: {}",
-            "Allow".green(),
-            property.transaction_hash.clone().unwrap()
-        );
+        println!("{} transaction: {}", "Allow".green(), property.transaction_hash.clone().unwrap());
         true
     } else {
-        println!(
-            "{} transaction: {}",
-            "Deny".red(),
-            property.transaction_hash.clone().unwrap()
-        );
+        println!("{} transaction: {}", "Deny".red(), property.transaction_hash.clone().unwrap());
         false
     }
 }
@@ -313,15 +479,16 @@ fn process_json_properties(
     property: Properties,
     results: &mut Vec<bool>,
     checked_vec: &mut Vec<String>,
-    fail_reason: &mut Vec<String>,
+    fail_reason: &mut Vec<String>
 ) -> bool {
     let event = property.occured_event.clone().unwrap();
     // println!("Dir_len {}", fs::read_dir("properties").unwrap().count());
     // Find Property Files which are triggered by the Event and the chain
     for file in fs::read_dir("properties").unwrap() {
         let path = file.unwrap().path();
-        let def_file: Value =
-            serde_json::from_str(fs::read_to_string(&path).unwrap().as_str()).unwrap();
+        let def_file: Value = serde_json
+            ::from_str(fs::read_to_string(&path).unwrap().as_str())
+            .unwrap();
         let name = path.file_name().unwrap().to_str().unwrap();
         // println!("File: {:?}", serde_json::to_string_pretty(&def_file).unwrap());
 
@@ -337,14 +504,10 @@ fn process_json_properties(
             }
         } else {
             // Non Ethereum Chains
-            if def_file.get("event").unwrap().as_str().unwrap() != event
-                || def_file
-                    .get("chain_name")
-                    .unwrap()
-                    .as_str()
-                    .unwrap()
-                    .to_lowercase()
-                    != property.src_chain.clone().unwrap().to_lowercase()
+            if
+                def_file.get("event").unwrap().as_str().unwrap() != event ||
+                def_file.get("chain_name").unwrap().as_str().unwrap().to_lowercase() !=
+                    property.src_chain.clone().unwrap().to_lowercase()
             {
                 // println!("Continuing...");
                 continue;
@@ -464,7 +627,7 @@ fn process_json_properties(
 fn process_talon_code(
     property: Properties,
     results: &mut Vec<bool>,
-    fail_reason: &mut Vec<String>,
+    fail_reason: &mut Vec<String>
 ) {
     let event = property.occured_event.unwrap();
 
@@ -549,7 +712,7 @@ fn process_talon_code(
 // Setup a TCP thread acting as a broadcaster for events
 fn setup_event_ws(
     addr: String,
-    event_queue: Arc<BlockingQueue<Event>>,
+    event_queue: Arc<BlockingQueue<Event>>
 ) -> Result<(JoinHandle<()>, JoinHandle<()>), String> {
     // Build TCP Endpoint
     let listener = TcpListener::bind(addr).expect("Failed to bind Address");
@@ -560,10 +723,7 @@ fn setup_event_ws(
     let connection_handler = thread::spawn(move || {
         for stream in listener.incoming() {
             let mut connections = connections_clone.lock().unwrap();
-            println!(
-                "New connection: {}",
-                stream.as_ref().unwrap().peer_addr().unwrap()
-            );
+            println!("New connection: {}", stream.as_ref().unwrap().peer_addr().unwrap());
             connections.push(stream.unwrap());
         }
     });
@@ -579,13 +739,14 @@ fn setup_event_ws(
             for (id, mut x) in connections_clone2.lock().unwrap().iter_mut().enumerate() {
                 match x.write_all(&serde_json::to_vec(&event).unwrap()) {
                     Ok(_) => {}
-                    Err(e) => match e.kind() {
-                        ErrorKind::ConnectionAborted | ErrorKind::ConnectionReset => {
-                            x.shutdown(std::net::Shutdown::Both).unwrap();
-                            connections_clone2.lock().unwrap().remove(id);
+                    Err(e) =>
+                        match e.kind() {
+                            ErrorKind::ConnectionAborted | ErrorKind::ConnectionReset => {
+                                x.shutdown(std::net::Shutdown::Both).unwrap();
+                                connections_clone2.lock().unwrap().remove(id);
+                            }
+                            _ => println!("Error {}: {}", x.peer_addr().unwrap(), e),
                         }
-                        _ => println!("Error {}: {}", x.peer_addr().unwrap(), e),
-                    },
                 }
             }
             // connections_clone2.lock().unwrap().iter().for_each(|mut x| {
@@ -620,8 +781,10 @@ fn log_evaluation(evaluation: utils::Evaluation) {
 #[test]
 fn test_event_broadcast() {
     let event_queue: Arc<BlockingQueue<Event>> = Arc::new(BlockingQueue::new());
-    let (handle1, handle2) =
-        setup_event_ws("127.0.0.1:8080".to_string(), event_queue.clone()).unwrap();
+    let (handle1, handle2) = setup_event_ws(
+        "127.0.0.1:8080".to_string(),
+        event_queue.clone()
+    ).unwrap();
 
     let remote_thread = thread::spawn(move || {
         let mut remote = TcpStream::connect("127.0.0.1:8080").unwrap();

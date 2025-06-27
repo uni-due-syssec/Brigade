@@ -2,7 +2,7 @@
     "event": "0x3a6e0fc61675aa2a100bcba0568368bb92bcec91c97673391074f11138f0cffe",
     "chain_name": "ethereum",
     "properties": { 
-        "input_data": "ethereum.get_transaction_by_hash($transaction_hash).result.input",
+        "input_data": "call(ethereum, get_transaction_by_hash, [$transaction_hash]).get(result).get(input)",
         "package": "$input_data.slice(10, 74).as(hex)",
         "payload_len": "$input_data.slice(201, 266).as(hex)",
         "payload": "$input_data.slice(266, 266 + $payload_len)"
