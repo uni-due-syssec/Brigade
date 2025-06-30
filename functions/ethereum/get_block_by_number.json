@@ -1,6 +1,6 @@
 {
     "jsonrpc": "2.0",
     "method": "eth_getBlockByNumber",
-    "params": "$block_number", "false",
+    "params": ["$block_number", false],
     "id": "1"
 }

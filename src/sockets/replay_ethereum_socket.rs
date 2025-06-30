@@ -20,16 +20,11 @@ pub struct ReplayEthereumSocketHandler {
 
 impl ReplayEthereumSocketHandler {
     pub fn retrieve_block(&self, block_number: u256) -> Value {
-<<<<<<< HEAD
         let call = format!(
-            "call(ethereum, get_block_by_number, [{}])",
+            "call(ethereum, get_block_by_number, [{}]).get(result)",
             format!("{:#x}", block_number)
         ); // Blocknumber
-=======
-        let call =
-            format!("call(ethereum, trace_replay_block_transactions, [{}]).get(result)", format!("{:#x}",block_number)); // Blocknumber
->>>>>>> a70c59ba23ab547656195dbdc3e084b0fec824a4
-
+        println!("Call: {}", call);
         let root = build_ast_root(call.as_str()).unwrap();
         root.print("");
         let val = root.evaluate().unwrap();
@@ -43,11 +38,15 @@ impl ReplayEthereumSocketHandler {
         // for each transaction hash in the block, get the transaction
         let mut hashes = Vec::new();
         // find_transaction_hashes(&block, &mut hashes);
-        hashes = block
+        let hash_val = block
             .get("transactions")
             .expect("Wrong format for block transactions")
             .as_array()
-            .unwrap();
+            .unwrap()
+            .to_vec();
+        for h in hash_val {
+            hashes.push(h.as_str().unwrap().to_string());
+        }
 
         for h in hashes {
             let call = format!(
