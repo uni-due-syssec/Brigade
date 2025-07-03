@@ -19,6 +19,23 @@ pub struct ReplayEthereumSocketHandler {
 }
 
 impl ReplayEthereumSocketHandler {
+    // The function retrieves all transactions with a specified log
+    // The log is the keccak256(event) where event is the abi encoded version of a Solidity Event.
+    pub fn get_all_transactions_with_log(&self, log: Vec<String>) -> Vec<Properties> {
+        let mut logs: Vec<&str> = log.iter().map(|s| s.as_str()).collect();
+        println!("logs: {:?}", logs);
+        let call = format!("call(ethereum, get_logs, [{:?}])", logs[0]); // Blocknumber
+        println!("Call: {}", call);
+        let root = build_ast_root(call.as_str()).unwrap();
+        root.print("");
+        let val = root.evaluate().unwrap();
+        print!("Val: {:?}\n", val);
+        let log_instance = Value::from(VarValues::from(val));
+        let mut hashes = Vec::new();
+        find_transaction_hashes(&log_instance, &mut hashes);
+        self.find_corresponding_transaction(hashes)
+    }
+
     pub fn retrieve_block(&self, block_number: u256) -> Value {
         let call = format!(
             "call(ethereum, get_block_by_number, [{}]).get(result)",
@@ -32,22 +49,8 @@ impl ReplayEthereumSocketHandler {
         Value::from(VarValues::from(val))
     }
 
-    pub fn filter_block(&self, block: Value) -> Vec<Properties> {
+    fn find_corresponding_transaction(&self, hashes: Vec<String>) -> Vec<Properties> {
         let mut properties: Vec<Properties> = Vec::new();
-
-        // for each transaction hash in the block, get the transaction
-        let mut hashes = Vec::new();
-        // find_transaction_hashes(&block, &mut hashes);
-        let hash_val = block
-            .get("transactions")
-            .expect("Wrong format for block transactions")
-            .as_array()
-            .unwrap()
-            .to_vec();
-        for h in hash_val {
-            hashes.push(h.as_str().unwrap().to_string());
-        }
-
         for h in hashes {
             let call = format!(
                 "call(ethereum, get_transaction_receipt, [{}]).get(result)",
@@ -106,8 +109,23 @@ impl ReplayEthereumSocketHandler {
                 }
             }
         }
-        // return only transactions were the topics match
         properties
+    }
+
+    pub fn filter_block(&self, block: Value) -> Vec<Properties> {
+        // for each transaction hash in the block, get the transaction
+        let mut hashes = Vec::new();
+        // find_transaction_hashes(&block, &mut hashes);
+        let hash_val = block
+            .get("transactions")
+            .expect("Wrong format for block transactions")
+            .as_array()
+            .unwrap()
+            .to_vec();
+        for h in hash_val {
+            hashes.push(h.as_str().unwrap().to_string());
+        }
+        self.find_corresponding_transaction(hashes)
     }
 }
 

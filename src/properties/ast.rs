@@ -1980,7 +1980,8 @@ impl ASTNode {
                         // Read contents and replace all params that start with a $ sign with the respective arguments
                         let contents =
                             fs::read_to_string(p).expect("Something went wrong reading the file");
-                        let mut json: Value = serde_json::from_str(&contents).unwrap();
+                        let mut json: Value = serde_json::from_str(&contents)
+                            .expect("Failed to convert contents to json");
 
                         let mut clear_args = args
                             .iter()
@@ -1989,7 +1990,7 @@ impl ASTNode {
                         replace_args_in_json(&mut json, &mut clear_args);
 
                         // let json = serde_json::to_string(&json).unwrap();
-                        // println!("Json: {}", json);
+                        println!("Json: {}", json);
                         // Build Client and send request
                         let client = reqwest::blocking::Client::builder().build().unwrap();
                         // print!("Endpoint: {}\n", endpoint_address);
@@ -2964,6 +2965,8 @@ fn replace_args_in_json(json: &mut Value, args: &mut Vec<String>) {
         _ => {}
     }
 }
+
+fn replace_args_in_str(json: &mut str, args: &Vec<String>) -> Value {}
 
 // #[derive(Debug, Clone)]
 // pub enum Token{

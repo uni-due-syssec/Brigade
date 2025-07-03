@@ -247,20 +247,22 @@ fn main() {
             chain_name: "ethereum".to_string(),
             topics: topics,
         };
+        let n = Instant::now();
+
+        let log = replayer.topics.clone().into_iter().collect();
+        let txs = replayer.get_all_transactions_with_log(log);
+        // Send to tx
+        for t in txs {
+            tx.send(t).unwrap();
+        }
+
+        println!("Elapse: {:?}", n.elapsed());
 
         while block_number <= block_end {
-            let n = Instant::now();
             // Process Block
-            let block = replayer.retrieve_block(block_number);
-            println!("Found block: {}", block);
-            let txs = replayer.filter_block(block);
-
-            // Send to tx
-            for t in txs {
-                tx.send(t).unwrap();
-            }
-
-            println!("Elapse: {:?}", n.elapsed());
+            //let block = replayer.retrieve_block(block_number);
+            //println!("Found block: {}", block);
+            //let txs = replayer.filter_block(block);
             block_number += 1;
         }
 
