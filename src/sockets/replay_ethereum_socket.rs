@@ -23,8 +23,8 @@ impl ReplayEthereumSocketHandler {
     // The log is the keccak256(event) where event is the abi encoded version of a Solidity Event.
     pub fn get_all_transactions_with_log(&self, log: Vec<String>) -> Vec<Properties> {
         let mut logs: Vec<&str> = log.iter().map(|s| s.as_str()).collect();
-        println!("logs: {:?}", logs);
-        let call = format!("call(ethereum, get_logs, [{:?}])", logs[0]); // Blocknumber
+        let l = format!("{:?}", logs);
+        let call = format!("call(ethereum, get_logs, [{:?}])", vec![l]); // Blocknumber
         println!("Call: {}", call);
         let root = build_ast_root(call.as_str()).unwrap();
         root.print("");
