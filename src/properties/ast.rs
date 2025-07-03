@@ -1980,14 +1980,16 @@ impl ASTNode {
                         // Read contents and replace all params that start with a $ sign with the respective arguments
                         let contents =
                             fs::read_to_string(p).expect("Something went wrong reading the file");
-                        let mut json: Value = serde_json::from_str(&contents)
-                            .expect("Failed to convert contents to json");
+                        // let mut json: Value = serde_json::from_str(&contents)
+                        //     .expect("Failed to convert contents to json");
 
                         let mut clear_args = args
                             .iter()
                             .map(|x| x.evaluate().unwrap().get_value())
                             .collect::<Vec<String>>();
-                        replace_args_in_json(&mut json, &mut clear_args);
+                        // replace_args_in_json(&mut json, &mut clear_args);
+
+                        let json = replace_args_in_str(&contents, &clear_args);
 
                         // let json = serde_json::to_string(&json).unwrap();
                         println!("Json: {}", json);
@@ -2966,7 +2968,17 @@ fn replace_args_in_json(json: &mut Value, args: &mut Vec<String>) {
     }
 }
 
-fn replace_args_in_str(json: &mut str, args: &Vec<String>) -> Value {}
+fn replace_args_in_str(json: &str, args: &Vec<String>) -> Value {
+    let mut json_string = json.to_string();
+    let mut args_iter = args.iter();
+    let re = regex::Regex::new(r"\$[a-zA-Z0-9_]*").unwrap();
+    for cap in re.find_iter(&json_string.clone()) {
+        if let Some(arg) = args_iter.next() {
+            json_string = json_string.replacen(cap.as_str(), arg, 1);
+        }
+    }
+    serde_json::from_str(&json_string).unwrap()
+}
 
 // #[derive(Debug, Clone)]
 // pub enum Token{
