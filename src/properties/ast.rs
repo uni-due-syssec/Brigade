@@ -2974,7 +2974,7 @@ fn replace_args_in_str(json: &str, args: &Vec<String>) -> Value {
     let re = regex::Regex::new(r"\$[a-zA-Z0-9_]*").unwrap();
     for cap in re.find_iter(&json_string.clone()) {
         if let Some(arg) = args_iter.next() {
-            json_string = json_string.replacen(cap.as_str(), arg, 1);
+            json_string = json_string.replacen(cap.as_str(), arg.replace("\\", "").as_str(), 1);
         }
     }
     serde_json::from_str(&json_string).unwrap()
