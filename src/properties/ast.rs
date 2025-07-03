@@ -2971,12 +2971,14 @@ fn replace_args_in_json(json: &mut Value, args: &mut Vec<String>) {
 fn replace_args_in_str(json: &str, args: &Vec<String>) -> Value {
     let mut json_string = json.to_string();
     let mut args_iter = args.iter();
+    println!("{:?}", args);
     let re = regex::Regex::new(r"\$[a-zA-Z0-9_]*").unwrap();
     for cap in re.find_iter(&json_string.clone()) {
         if let Some(arg) = args_iter.next() {
-            json_string = json_string.replacen(cap.as_str(), arg.replace("\\", "").as_str(), 1);
+            json_string = json_string.replace(cap.as_str(), arg);
         }
     }
+    println!("{:?}", json_string);
     serde_json::from_str(&json_string).unwrap()
 }
 
