@@ -1,21 +1,25 @@
 use std::collections::HashSet;
 use std::sync::mpsc::Sender;
 
+use anyhow::anyhow;
 use ethnum::u256;
 use reqwest::blocking::{get, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::get_variable_map_instance;
+use crate::message_formats::solana_message::Val;
 use crate::properties::ast::build_ast_root;
 use crate::utils::get_startup_time;
 use crate::VarValues;
 use crate::{message_formats::ethereum_message::*, properties::Properties, set_var, utils};
 
+use anyhow::Result;
+
 pub struct ReplayEthereumSocketHandler {
     // State of the Client
     pub(crate) chain_name: String,
-    pub(crate) topics: HashSet<String>,
+    pub(crate) config: ReplayConfig,
 }
 
 impl ReplayEthereumSocketHandler {
@@ -35,6 +39,23 @@ impl ReplayEthereumSocketHandler {
         let mut hashes = Vec::new();
         find_transaction_hashes(&log_instance, &mut hashes);
         self.find_corresponding_transaction(hashes)
+    }
+
+    pub fn get_all_logs(&self) -> Result<Vec<Properties>> {
+        let client = Client::new();
+        let res = client.post("http://127.0.0.1:8545")
+            .json(&self.config)
+            .send();
+        match res {
+            Ok(res) => {
+                let log_res: LogResponse = serde_json::from_str(&res.text().unwrap()).unwrap();
+                println!("Logs: {:#?}", log_res);
+                let hashes: Vec<String> = log_res.result.iter().map(|r| r.transaction_hash.clone()).collect();
+                println!("Hashes: {:#?}", hashes);
+                Ok(self.find_corresponding_transaction(hashes))
+            }
+            Err(err) => {Err(anyhow!("Failed to send rpc {}", err))},
+        }
     }
 
     pub fn retrieve_block(&self, block_number: u256) -> Value {
@@ -75,11 +96,11 @@ impl ReplayEthereumSocketHandler {
                     if let Some(_topics) = log.get("topics").and_then(|t| t.as_array()) {
                         if _topics
                             .iter()
-                            .any(|t| self.topics.contains(t.as_str().unwrap()))
+                            .any(|t| self.config.params[0].topics.contains(&t.as_str().unwrap().to_string()))
                         {
                             let topnum = _topics
                                 .iter()
-                                .find(|t| self.topics.contains(t.as_str().unwrap()))
+                                .find(|t| self.config.params[0].topics.contains(&t.as_str().unwrap().to_string()))
                                 .and_then(|t| Some(t.as_str().unwrap().to_string()));
                             let payer = receipt.get("from").unwrap().as_str().unwrap();
 
@@ -206,20 +227,62 @@ fn get_balance_at_block(address: String, block_number: u256) -> u256 {
 }
 
 /// The serialized version of a Config for the replay
-#[derive(Deserialize, Serialize, Clone, Debug)]
+// #[derive(Deserialize, Serialize, Clone, Debug)]
+// pub struct ReplayConfig {
+//     /// Topics to be subscribed to
+//     pub topics: Vec<String>,
+// }
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReplayConfig {
-    /// Topics to be subscribed to
+    pub jsonrpc: String,
+    pub id: i64,
+    pub method: String,
+    pub params: Vec<Param>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Param {
+    pub from_block: String,
+    pub to_block: String,
+    pub address: String,
     pub topics: Vec<String>,
 }
 
-#[test]
-fn test_replay_config_deser() {
-    let json = r#"{"topics":["0x123456","0x7890ab"]}"#;
-    let config: ReplayConfig = serde_json::from_str(json).unwrap();
-    assert_eq!(config.topics, vec!["0x123456", "0x7890ab"]);
 
-    let json2 = serde_json::to_string(&config).unwrap();
-    assert_eq!(json, json2);
-
-    println!("{:?}", json);
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogResponse {
+    pub jsonrpc: String,
+    pub id: i64,
+    pub result: Vec<LogResult>,
 }
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogResult {
+    pub address: String,
+    pub topics: Vec<String>,
+    pub data: String,
+    pub block_hash: String,
+    pub block_number: String,
+    pub block_timestamp: String,
+    pub transaction_hash: String,
+    pub transaction_index: String,
+    pub log_index: String,
+    pub removed: bool,
+}
+
+
+// #[test]
+// fn test_replay_config_deser() {
+//     let json = r#"{"topics":["0x123456","0x7890ab"]}"#;
+//     let config: ReplayConfig = serde_json::from_str(json).unwrap();
+//     assert_eq!(config.topics, vec!["0x123456", "0x7890ab"]);
+
+//     let json2 = serde_json::to_string(&config).unwrap();
+//     assert_eq!(json, json2);
+
+//     println!("{:?}", json);
+// }

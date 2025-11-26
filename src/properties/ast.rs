@@ -2000,7 +2000,7 @@ impl ASTNode {
                         // let resp2 = client.post(endpoint_address).json(&json).build().unwrap();
                         // println!("Request: {:?}", resp2);
                         let body = resp.text().unwrap();
-                        // println!("Result: {:?}", body);
+                        println!("Result: {:?}", body);
                         let result: Value = serde_json::from_str(&body.as_str()).unwrap();
 
                         // check if message contains an error
@@ -2971,6 +2971,8 @@ fn replace_args_in_json(json: &mut Value, args: &mut Vec<String>) {
 fn replace_args_in_str(json: &str, args: &Vec<String>) -> Value {
     let mut json_string = json.to_string();
     let mut args_iter = args.iter();
+    println!("JSON: {}", json_string);
+    println!("Args: {:#?}", args);
     let re = regex::Regex::new(r"\$[a-zA-Z0-9_]*").unwrap();
     for cap in re.find_iter(&json_string.clone()) {
         if let Some(arg) = args_iter.next() {
@@ -4031,6 +4033,17 @@ mod test_ast {
     }
 
     #[test]
+    fn test_replace_args() {
+        let root = build_ast_root("call(ethereum, get_logs, [\"0x97116cf6cd4f6412bb47914d6db18da9e16ab2142f543b86e207c24fbd16b23a\",\"0xdbb69440df8433824a026ef190652f29929eb64b4d1d5d2a69be8afe3e6eaed8\",\"0xa67d828453163879637ade5a7d51abb746669dbc34d7e2149e8fec3bf71fff54\"]).get(result)").unwrap();
+        root.print("");
+        let val = root.evaluate().unwrap();
+        println!("{}", val.get_value());
+
+        print_variables(&get_variable_map_instance());
+    }
+
+
+    #[test]
     fn test_remove_arr() {
         set_var!("arr", VarValues::Array(vec![]));
 
@@ -4070,6 +4083,7 @@ mod test_ast {
         }
     }
 
+    
     #[test]
     fn test_insert_remove_map() {
         let mut map: HashMap<String, VarValues> = HashMap::new();

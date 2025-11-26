@@ -35,7 +35,7 @@ impl EthereumSocketHandler {
     fn handle_ethereum(&mut self, message: Value) {
         if let Ok(ethereum_msg) = serde_json::from_value::<EthereumEventMessage>(message.clone()) {
             // Add event message params to the variables
-            // println!("Message: {}", ethereum_msg);
+            println!("Message: {}", ethereum_msg);
 
             // let event_data = message.clone().get("")
 

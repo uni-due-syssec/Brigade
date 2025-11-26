@@ -54,7 +54,7 @@ const FEATURE_VEC_LENGTH: usize = 10;
 #[command(about = "Brigade secures Cross Chain Bridges", long_about = None)]
 struct Args {
     /// Endpoint at which the TCP Port is opened. Default: 127.0.0.1:8080
-    #[arg(short, long)]
+    #[arg(long)]
     endpoint: Option<String>,
     /// Use predefined variables from a json file.
     /// The json file should contain an array containing the patterns for creation of variables
@@ -68,18 +68,15 @@ struct Args {
     /// Log Timestamps for evaluation
     #[arg(short, long)]
     log_timestamps: bool,
-    /// Set number of transactions to train on
-    #[arg(short, long)]
-    train_on: Option<u64>,
     /// Run in replay mode
     #[arg(short, long)]
     replay: bool,
-    /// Starting block for replay
-    #[arg(short, long)]
-    start_block: Option<u256>,
-    /// End block for replay (inclusive)
-    #[arg(short, long)]
-    end_block: Option<u256>,
+    // /// Starting block for replay
+    // #[arg(short, long)]
+    // start_block: Option<u256>,
+    // /// End block for replay (inclusive)
+    // #[arg(long)]
+    // end_block: Option<u256>,
     /// Path to replay config
     #[arg(long)]
     replay_config: Option<PathBuf>,
@@ -96,10 +93,6 @@ fn main() {
 
     if args.log_timestamps {
         LOG_TIMESTAMPS.store(true, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    if args.train_on.is_some() {
-        TRAINED_ON.store(args.train_on.unwrap(), std::sync::atomic::Ordering::Relaxed);
     }
 
     // Log starting point
@@ -186,6 +179,9 @@ fn main() {
             sleep(Duration::from_millis(100));
             let path = entry.unwrap().path();
             println!("{}", path.display());
+            if path.file_name().unwrap() == "replay_config.json" {
+                continue;
+            }
 
             // Channel for sending
             let sender = tx.clone();
@@ -222,13 +218,13 @@ fn main() {
         // Replay mode:
 
         // Setup blockrange
-        let block_start = args
-            .start_block
-            .expect("Start block must be provided for replaying transactions");
-        let block_end = args
-            .end_block
-            .expect("End block must be provided for replaying transactions");
-        let mut block_number = block_start;
+        // let block_start = args
+        //     .start_block
+        //     .expect("Start block must be provided for replaying transactions");
+        // let block_end = args
+        //     .end_block
+        //     .expect("End block must be provided for replaying transactions");
+        // let mut block_number = block_start;
 
         let config: replay_ethereum_socket::ReplayConfig = serde_json
             ::from_str(
@@ -241,30 +237,23 @@ fn main() {
             )
             .unwrap();
 
-        let topics = HashSet::from_iter(config.topics);
         // call the replay function and then invoke the replay handler and send the resulting properties via tx to rx
         let replayer = replay_ethereum_socket::ReplayEthereumSocketHandler {
             chain_name: "ethereum".to_string(),
-            topics: topics,
+            config
         };
         let n = Instant::now();
 
-        let log = replayer.topics.clone().into_iter().collect();
-        let txs = replayer.get_all_transactions_with_log(log);
+        let log = replayer.config.params[0].topics.clone();
+        // let txs = replayer.get_all_transactions_with_log(log);
+        let txs = replayer.get_all_logs().unwrap();
+        println!("Length of txs: {}", txs.len());
         // Send to tx
         for t in txs {
             tx.send(t).unwrap();
         }
 
         println!("Elapse: {:?}", n.elapsed());
-
-        while block_number <= block_end {
-            // Process Block
-            //let block = replayer.retrieve_block(block_number);
-            //println!("Found block: {}", block);
-            //let txs = replayer.filter_block(block);
-            block_number += 1;
-        }
 
         // TODO: Terminate the program gracefully
     }
