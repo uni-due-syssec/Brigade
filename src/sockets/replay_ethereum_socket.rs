@@ -1,12 +1,11 @@
-
 use anyhow::anyhow;
 use ethnum::u256;
 use reqwest::blocking::Client;
 use serde::{ Deserialize, Serialize };
-use serde_json::Value;
+use serde_json::{ Value, json };
 
 use crate::get_variable_map_instance;
-use crate::message_formats::solana_message::Val;
+use crate::message_formats::solana_message::{ Res, Val };
 use crate::properties::ast::build_ast_root;
 use crate::VarValues;
 use crate::{ message_formats::ethereum_message::*, properties::Properties, set_var, utils };
@@ -17,6 +16,7 @@ pub struct ReplayEthereumSocketHandler {
     // State of the Client
     pub(crate) chain_name: String,
     pub(crate) config: Chain,
+    pub(crate) rpc_url: String,
 }
 
 impl ReplayEthereumSocketHandler {
@@ -40,7 +40,20 @@ impl ReplayEthereumSocketHandler {
 
     pub fn get_all_logs(&self) -> Result<Vec<Properties>> {
         let client = Client::new();
-        let res = client.post("http://127.0.0.1:8545").json(&self.config).send();
+        let get_logs =
+            json!(
+            {"jsonrpc": "2.0",
+            "method": "eth_getLogs",
+            "params": [
+                {
+                "address": self.config.address,
+                "topics": self.config.topics
+                }
+            ],
+            "id": 1
+            });
+
+        let res = client.post(self.rpc_url.clone()).json(&get_logs).send();
         match res {
             Ok(res) => {
                 let log_res: LogResponse = serde_json::from_str(&res.text().unwrap()).unwrap();
@@ -51,6 +64,51 @@ impl ReplayEthereumSocketHandler {
                     .collect();
                 println!("Hashes: {:#?}", hashes);
                 Ok(self.find_corresponding_transaction(hashes))
+            }
+            Err(err) => { Err(anyhow!("Failed to send rpc {}", err)) }
+        }
+    }
+
+    pub fn get_logs(&self, from_block: String, to_block: String) -> Result<Vec<Properties>> {
+        let client = Client::new();
+        let get_logs =
+            json!(
+            {"jsonrpc": "2.0",
+            "method": "eth_getLogs",
+            "params": [
+                {
+                "fromBlock": from_block,
+                "toBlock": to_block,
+                "address": self.config.address,
+                "topics": self.config.topics
+                }
+            ],
+            "id": 1
+            });
+        println!("Get Logs: {}", serde_json::to_string_pretty(&get_logs).unwrap());
+        let res = client.post(self.rpc_url.clone()).header("Content-Type", "application/json").json(&get_logs).send();
+        match res {
+            Ok(res) => {
+                let text = &res.text();
+                match text {
+                    Ok(text) => {
+                        println!("Text: {}", text);
+                        let log_res: std::result::Result<LogResponse, serde_json::Error> = serde_json::from_str(text);
+                        match log_res {
+                            Ok(log_res) => {
+                                println!("Logs: {:#?}", log_res);
+                                let hashes: Vec<(String, String)> = log_res.result
+                                    .iter()
+                                    .map(|r| (r.transaction_hash.clone(), r.data.clone()))
+                                    .collect();
+                                println!("Hashes: {:#?}", hashes);
+                                Ok(self.find_corresponding_transaction(hashes))
+                            }
+                            Err(err) => Err(anyhow!("Failed Serde: {}", err)),
+                        }
+                    }
+                    Err(err) => Err(anyhow!("Failed Text: {}", err)),
+                }
             }
             Err(err) => { Err(anyhow!("Failed to send rpc {}", err)) }
         }
@@ -240,9 +298,9 @@ fn get_balance_at_block(address: String, block_number: u256) -> u256 {
 pub struct ReplayConfig {
     pub starting_block: String,
     pub ending_block: String,
-    pub paging: bool,
+    pub paging: Option<bool>,
     #[serde(rename = "page_length")]
-    pub page_length: i64,
+    pub page_length: Option<u64>,
     pub chains: Vec<Chain>,
 }
 

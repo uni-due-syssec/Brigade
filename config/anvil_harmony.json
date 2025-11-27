@@ -3,20 +3,6 @@
     {
       "subscription_method": "eth_subscribe",
       "name": "ethereum",
-      "contract_address": "0x2dCCDB493827E15a5dC8f8b72147E6c4A5620857",
-      "filter": [
-        "logs",
-        {
-          "address": "0x2dCCDB493827E15a5dC8f8b72147E6c4A5620857",
-          "topics": [
-            "0xb24e65d2501e29a3ce014b0cc2283699c081ad27f10d64f036f96912b6f8943e"
-          ]
-        }
-      ]
-    },
-    {
-      "subscription_method": "eth_subscribe",
-      "name": "ethereum",
       "contract_address": "0x715CdDa5e9Ad30A0cEd14940F9997EE611496De6",
       "filter": [
         "logs",

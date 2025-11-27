@@ -13,6 +13,9 @@
 
 ## How to use
 
+To setup endpoints use the .env.sample to setup endpoints.
+Add for each endpoint the corresponding environment variable or the direct API key.
+
 ## FAQ
 
 Where do I get the Filter from?

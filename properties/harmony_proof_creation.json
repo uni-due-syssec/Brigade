@@ -1,0 +1,9 @@
+{
+    "event": "Locked(address,address,uint256,address)",
+    "chain_name": "ethereum",
+    "properties": {},
+    "pattern": 
+       [
+        "$map.insert($transaction_hash, false)"
+    ]
+}

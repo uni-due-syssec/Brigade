@@ -1,0 +1,14 @@
+{
+    "event": "0x33e13ecb54c3076d8e8bb8c2881800a4d972b792045ffae98fdf46df365fed75",
+    "chain_name": "ethereum",
+    "properties": { 
+        "event_data": "call(ethereum, eth_getTransactionReceipt, [$transaction_hash]).get(result).get(logs)",
+        "data": "$event_data.at(1).get(data).as(hex)",
+        "receiver": "$data.slice(155, 194).as(address)",
+        "receipt_id": "$data.slice(194, 258).as(hex)"
+    },
+    "pattern": 
+       [
+        "require($map.get($receipt_id) == false, $map.remove($receipt_id))"
+    ]
+}

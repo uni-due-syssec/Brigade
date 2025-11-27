@@ -21,8 +21,30 @@ pub struct Connection {
 
 impl ConnectionConfig {
     pub fn from_file(path: &str) -> Self {
+        dotenv::dotenv().ok();
+
         let data = std::fs::read_to_string(path).unwrap();
-        serde_json::from_str(&data).unwrap()
+        let mut config: ConnectionConfig = serde_json::from_str(&data).unwrap();
+
+        for c in &mut config.connections {
+            let env_var = &c.rpc_url;
+
+            let e = std::env::var(env_var);
+            match e {
+                Ok(v) => {
+                    println!("{}: {}", env_var, v);
+                    c.rpc_url = v.clone();
+                    let w = v.replace("http", "ws");
+                    c.ws_url = Some(w);
+                }
+                Err(e) => {
+                    println!("{}: {}", env_var, e);
+                    continue;
+                }
+            }
+        }
+
+        config
     }
 }
 

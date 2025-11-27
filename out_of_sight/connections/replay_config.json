@@ -1,0 +1,29 @@
+{
+  "startingBlock": "0xe51300",
+  "endingBlock": "0xe5132a",
+  "paging": false,
+  "page_length": 500,
+  "chains": [
+    {
+      "name": "ethereum",
+      "address": "0xf621Fb08BBE51aF70e7E0F4EA63496894166Ff7F",
+      "topics": [
+        "0x0ac368c799fd87078497a837c3b184349108599d7c108f68710d3321ba416c6f"
+      ]
+    },
+    {
+      "name": "polygon",
+      "address": "0xa260E3732593E4EcF9DdC144fD6C4c5fe7077978",
+      "topics": [
+        "0x0ac368c799fd87078497a837c3b184349108599d7c108f68710d3321ba416c6f"
+      ]
+    },
+    {
+      "name": "bsc",
+      "address": "0x44487a445a7595446309464A82244B4bD4e325D5",
+      "topics": [
+        "0x0ac368c799fd87078497a837c3b184349108599d7c108f68710d3321ba416c6f"
+      ]
+    }
+  ]
+}

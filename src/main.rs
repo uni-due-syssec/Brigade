@@ -6,9 +6,10 @@ use properties::custom_functions::execute_custom_function;
 use properties::Properties;
 use serde_json::Value;
 use sockets::event_socket::{ Allowance, BlockingQueue, Event };
+use std::cmp::min;
 use std::collections::{ HashMap, HashSet };
 use std::fs::{ File, OpenOptions };
-use std::io::{ ErrorKind, Read, Write };
+use std::io::{ self, ErrorKind, Read, Write };
 use std::net::{ TcpListener, TcpStream };
 use std::path::PathBuf;
 use std::sync::atomic::{ self, AtomicBool, AtomicU64 };
@@ -28,6 +29,7 @@ use clap::Parser;
 use chrono::{ DateTime, Datelike, Local, Timelike };
 
 use crate::configs::BridgeConfig;
+use crate::configs::connection::ConnectionConfig;
 use crate::inference::ModelFeature;
 use crate::properties::talon::TalonFile;
 use crate::sockets::replay_ethereum_socket;
@@ -170,7 +172,7 @@ fn main() {
         handle2.join().unwrap();
     });
 
-    thread_ids.push(event_thread);
+    // thread_ids.push(event_thread);
 
     if !args.replay {
         // Run through all files in directory dir and print their paths
@@ -244,24 +246,54 @@ fn main() {
                     .as_str()
             )
             .unwrap();
+        let start = u64
+            ::from_str_radix(config.starting_block.trim_start_matches("0x"), 16)
+            .expect("invalid start hex");
+        let end = if &config.ending_block == "latest" {
+            unimplemented!("latest not implemented");
+        } else {
+            u64::from_str_radix(&config.ending_block.trim_start_matches("0x"), 16).expect(
+                "invalid end hex"
+            )
+        };
+        let step_len = config.page_length.unwrap_or(10000);
+        let step = if config.paging.unwrap_or(false) { step_len } else { 10_000 };
 
         for chain in config.chains {
-            // call the replay function and then invoke the replay handler and send the resulting properties via tx to rx
-            let replayer = replay_ethereum_socket::ReplayEthereumSocketHandler {
-                chain_name: chain.name.to_string(),
-                chain,
-            };
-            let n = Instant::now();
+            let tx_clone = tx.clone();
+            thread_ids.push(
+                thread::spawn(move || {
+                    let connections = ConnectionConfig::from_file("config/connections.json");
+                    let chain_connection = connections.connections
+                        .iter()
+                        .find(|x| x.name == chain.name)
+                        .unwrap();
 
-            let log = replayer.config.params[0].topics.clone();
-            // let txs = replayer.get_all_transactions_with_log(log);
-            let txs = replayer.get_all_logs().unwrap();
-            println!("Length of txs: {}", txs.len());
-            // Send to tx
-            for t in txs {
-                tx.send(t).unwrap();
-            }
-            println!("Elapse: {:?}", n.elapsed());
+                    // call the replay function and then invoke the replay handler and send the resulting properties via tx to rx
+                    let replayer = replay_ethereum_socket::ReplayEthereumSocketHandler {
+                        chain_name: chain.name.to_string(),
+                        config: chain,
+                        rpc_url: chain_connection.rpc_url.to_string(),
+                    };
+
+                    // let txs = replayer.get_all_logs().unwrap();
+
+                    for i in (start..=end).step_by(step as usize) {
+                        let end_block = min(end, i+step);
+                        let txs = replayer.get_logs(format!("0x{:x}", i), format!("0x{:x}", end_block));
+                        match txs {
+                            Ok(txs) => {
+                                println!("Length of txs: {}", txs.len());
+                                // Send to tx
+                                for t in txs {
+                                    tx_clone.send(t).unwrap();
+                                }
+                            }
+                            Err(e) => eprintln!("Error: {}", e),
+                        }
+                    }
+                })
+            );
         }
 
         // TODO: Terminate the program gracefully
@@ -277,6 +309,20 @@ fn main() {
     for t in thread_ids {
         t.join().unwrap();
     }
+
+    // Wait for user termination
+    let mut input = String::new();
+    let stdin = io::stdin();
+    print!("Press 'q' to terminate the program...");
+    loop {
+        stdin.read_line(&mut input).expect("Failed to read line");
+        if input.trim() == "q" {
+            break;
+        }
+        input.clear();
+    }
+
+    drop(event_thread);
 }
 
 fn event_loop(property: Properties, event_queue: Arc<BlockingQueue<Event>>) -> bool {

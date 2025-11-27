@@ -1,0 +1,19 @@
+{
+    "connections": [
+        {
+            "name": "ethereum",
+            "rpc_url": "ETHEREUM_API",
+            "ws_url": "ETHEREUM_API"
+        },
+        {
+            "name": "bsc",
+            "rpc_url": "BSC_API",
+            "ws_url": "BSC_API"
+        },
+        {
+            "name": "polygon",
+            "rpc_url": "POLYGON_API",
+            "ws_url": "POLYGON_API"
+        }
+    ]
+}
