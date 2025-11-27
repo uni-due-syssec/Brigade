@@ -2,11 +2,11 @@
     "event": "InconsistentToken(address,uint256,address)",
     "chain_name": "ethereum",
     "properties": { 
-        "token_address": "call(ethereum, get_transaction_by_hash, [$transaction_hash]).get(result).get(input).slice(34,74).as(address)",
+        "token_address": "call(ethereum, eth_getTransactionByHash, [$transaction_hash]).get(result).get(input).slice(34,74).as(address)",
         "token_amount": "$event_data.slice(66,130).as(u256)",
         "call_data": "0x70a08231000000000000000000000000.push($poc1_contract.slice(2,42))",
-        "self_balance_after": "call(ethereum, call_method, [$call_data, $token_address, $ethereum_block_number.as(hex)]).get(result)",
-        "self_balance_before": "call(ethereum, call_method [$call_data, $token_address, ($ethereum_block_number - 1).as(hex)]).get(result)"
+        "self_balance_after": "call(ethereum, eth_call, [$call_data, $token_address, $ethereum_block_number.as(hex)]).get(result)",
+        "self_balance_before": "call(ethereum, eth_call [$call_data, $token_address, ($ethereum_block_number - 1).as(hex)]).get(result)"
     },
     "pattern": [
         "$self_balance_before + $token_amount == $self_balance_after"

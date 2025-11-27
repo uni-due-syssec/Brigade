@@ -1,18 +1,32 @@
 {
-    "name": "ethereum",
-    "rpc_url": "ws://127.0.0.1:8545",
-    "http_url": "http://127.0.0.1:8545",
-    "contract_address": "0x2dCCDB493827E15a5dC8f8b72147E6c4A5620857",
-    "subscription_method": "eth_subscribe",
-    "filter": [
-      "logs",
-      {
-        "address": "0x2dCCDB493827E15a5dC8f8b72147E6c4A5620857",
-        "topics": [
-          [
+  "contracts": [
+    {
+      "subscription_method": "eth_subscribe",
+      "name": "ethereum",
+      "contract_address": "0x2dCCDB493827E15a5dC8f8b72147E6c4A5620857",
+      "filter": [
+        "logs",
+        {
+          "address": "0x2dCCDB493827E15a5dC8f8b72147E6c4A5620857",
+          "topics": [
             "0xb24e65d2501e29a3ce014b0cc2283699c081ad27f10d64f036f96912b6f8943e"
           ]
-        ]
-      } 
-    ]
-  }
+        }
+      ]
+    },
+    {
+      "subscription_method": "eth_subscribe",
+      "name": "ethereum",
+      "contract_address": "0x715CdDa5e9Ad30A0cEd14940F9997EE611496De6",
+      "filter": [
+        "logs",
+        {
+          "address": "0x715CdDa5e9Ad30A0cEd14940F9997EE611496De6",
+          "topics": [
+            "0x33e13ecb54c3076d8e8bb8c2881800a4d972b792045ffae98fdf46df365fed75"
+          ]
+        }
+      ]
+    }
+  ]
+}

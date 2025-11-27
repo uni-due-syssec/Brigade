@@ -43,8 +43,8 @@ The special variables `$keystore` and `$map` are global and can be used to persi
 
 Preset variables include:
 
-- `$chain_name_block_number` e.g. `$ethereum_block_number` holds the block number of the current event
-- `$config_file_prefix_contract` e.g. `$eth2_contract` holds the contract address for each config file. Hint: name config files with `prefix_config.json`
+- `$chain_name_block_number`, e.g., `$ethereum_block_number` holds the block number of the current event
+- `$config_file_prefix_contract`, e.g., `$eth2_contract` holds the contract address for each config file. Hint: name config files with `prefix_config.json`
 
 ### Functions
 
@@ -90,9 +90,9 @@ However, by using the `at()` function only one index is used.
     - Create a new variable with a name and a value
 12. 'Custom Functions'
     - `call(connection, functionname, [args])`
-    - Call the RPC method in the directory ./functions/connection/functionname.json with the arguments provided
+    - Calls the RPC method in the directory ./functions/connection/rpc.json with the arguments provided
       The folder functions/connection/ needs a connection.json that specifies the "endpoint" as a JSON argument to the http endpoint of the blockchain.
-      The function itself specifies the RPC method to call and indicates a variable by a leading '$'-sign.
+      The function itself specifies the RPC method to call and the params for the RPC.
       Returns a map that can be queried with the get method
 13. `Require()`
     - `require(condition, statement)`

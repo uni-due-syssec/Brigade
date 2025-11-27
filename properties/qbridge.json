@@ -4,12 +4,12 @@
     "properties": {
         "resource_id": "$event_data.slice(66, 130).as(hex)",
         "handler_calldata": "0xacc1b42e.push($resource_id.slice(2,66)).as(hex)",
-        "handler_address": "call(ethereum, call_method, [$handler_calldata, $qbridge_contract, $ethereum_block_number.as(hex)]).get(result).as(address)",
+        "handler_address": "call(ethereum, eth_call, [$handler_calldata, $qbridge_contract, $ethereum_block_number.as(hex)]).get(result).as(address)",
         "token_calldata": "0x35d0d5dc.push($resource_id.slice(2,66)).as(hex)",
-        "token_address": "call(ethereum, call_method, [$token_calldata, $handler_address, $ethereum_block_number.as(hex)]).get(result).as(address)",
+        "token_address": "call(ethereum, eth_call, [$token_calldata, $handler_address, $ethereum_block_number.as(hex)]).get(result).as(address)",
         "call_data": "0x70a08231000000000000000000000000.push($handler_address.slice(2,42))",
-        "self_balance_after": "call(ethereum, call_method, [$call_data, $token_address, $ethereum_block_number.as(hex)]).get(result).as(u256)",
-        "self_balance_before": "call(ethereum, call_method, [$call_data, $token_address, ($ethereum_block_number - 1).as(hex)]).get(result).as(u256)",
+        "self_balance_after": "call(ethereum, eth_call, [$call_data, $token_address, $ethereum_block_number.as(hex)]).get(result).as(u256)",
+        "self_balance_before": "call(ethereum, eth_call, [$call_data, $token_address, ($ethereum_block_number - 1).as(hex)]).get(result).as(u256)",
         "token_amount": "$event_data.slice(386,450).as(u256)"
     },
     "pattern": [

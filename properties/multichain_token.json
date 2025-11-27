@@ -2,17 +2,17 @@
     "event": "0x97116cf6cd4f6412bb47914d6db18da9e16ab2142f543b86e207c24fbd16b23a",
     "chain_name": "ethereum",
     "properties": { 
-        "input": "call(ethereum, get_transaction_by_hash, [$transaction_hash]).get(result).get(input)",
+        "input": "call(ethereum, eth_getTransactionByHash, [$transaction_hash]).get(result).get(input)",
         "anyswap_contract": "$input.slice(74,138).as(address)",
         "token_amount": "$event_data.slice(2,66).as(u256)",
         "get_token": "0x6f307dc3",
-        "token_address": "call(ethereum, call_method, [$get_token, $anyswap_contract, $ethereum_block_number.as(hex)]).get(result).as(address)",
+        "token_address": "call(ethereum, eth_call, [$get_token, $anyswap_contract, $ethereum_block_number.as(hex)]).get(result).as(address)",
         "call_data": "0x70a08231000000000000000000000000.push($anyswap_contract.slice(2,42))",
-        "self_balance_after": "call(ethereum, call_method, [$call_data, $token_address, $ethereum_block_number.as(hex)]).get(result)",
-        "self_balance_before": "call(ethereum, call_method [$call_data, $token_address, ($ethereum_block_number - 1).as(hex)]).get(result)",
+        "self_balance_after": "call(ethereum, eth_call, [$call_data, $token_address, $ethereum_block_number.as(hex)]).get(result)",
+        "self_balance_before": "call(ethereum, eth_call [$call_data, $token_address, ($ethereum_block_number - 1).as(hex)]).get(result)",
         "payer_call": "0x70a08231000000000000000000000000.push($payer_address.slice(2,42))",
-        "payer_balance_after": "call(ethereum, call_method, [$payer_call, $token_address, $ethereum_block_number.as(hex)]).get(result)",
-        "payer_balance_before": "call(ethereum, call_method [$payer_call, $token_address, ($ethereum_block_number - 1).as(hex)]).get(result)"
+        "payer_balance_after": "call(ethereum, eth_call, [$payer_call, $token_address, $ethereum_block_number.as(hex)]).get(result)",
+        "payer_balance_before": "call(ethereum, eth_call [$payer_call, $token_address, ($ethereum_block_number - 1).as(hex)]).get(result)"
     },
     "pattern": [
         "$token_address || true",

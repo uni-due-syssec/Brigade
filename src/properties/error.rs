@@ -50,6 +50,8 @@ pub enum ASTError {
     RequireError(String),
     #[error("overflow occured: {0}")]
     OverflowError(String),
+    #[error("failed to parse request {0}")]
+    RequestReplacementError(String),
 }
 
 #[derive(Error, Debug)]

@@ -1,66 +1,64 @@
-use std::collections::HashSet;
-use std::sync::mpsc::Sender;
 
 use anyhow::anyhow;
 use ethnum::u256;
-use reqwest::blocking::{get, Client};
-use serde::{Deserialize, Serialize};
+use reqwest::blocking::Client;
+use serde::{ Deserialize, Serialize };
 use serde_json::Value;
 
 use crate::get_variable_map_instance;
 use crate::message_formats::solana_message::Val;
 use crate::properties::ast::build_ast_root;
-use crate::utils::get_startup_time;
 use crate::VarValues;
-use crate::{message_formats::ethereum_message::*, properties::Properties, set_var, utils};
+use crate::{ message_formats::ethereum_message::*, properties::Properties, set_var, utils };
 
 use anyhow::Result;
 
 pub struct ReplayEthereumSocketHandler {
     // State of the Client
     pub(crate) chain_name: String,
-    pub(crate) config: ReplayConfig,
+    pub(crate) config: Chain,
 }
 
 impl ReplayEthereumSocketHandler {
-    // The function retrieves all transactions with a specified log
-    // The log is the keccak256(event) where event is the abi encoded version of a Solidity Event.
-    pub fn get_all_transactions_with_log(&self, log: Vec<String>) -> Vec<Properties> {
-        let mut logs: Vec<&str> = log.iter().map(|s| s.as_str()).collect();
-        let l = format!("{:?}", logs);
+    // // The function retrieves all transactions with a specified log
+    // // The log is the keccak256(event) where event is the abi encoded version of a Solidity Event.
+    // pub fn get_all_transactions_with_log(&self, log: Vec<String>) -> Vec<Properties> {
+    //     let mut logs: Vec<&str> = log.iter().map(|s| s.as_str()).collect();
+    //     let l = format!("{:?}", logs);
 
-        let call = format!("call(ethereum, get_logs, [{:?}])", vec![l]); // Blocknumber
-        println!("Call: {}", call);
-        let root = build_ast_root(call.as_str()).unwrap();
-        root.print("");
-        let val = root.evaluate().unwrap();
-        print!("Val: {:?}\n", val);
-        let log_instance = Value::from(VarValues::from(val));
-        let mut hashes = Vec::new();
-        find_transaction_hashes(&log_instance, &mut hashes);
-        self.find_corresponding_transaction(hashes)
-    }
+    //     let call = format!("call(ethereum, eth_getLogs, [{:?}])", vec![l]); // Blocknumber
+    //     println!("Call: {}", call);
+    //     let root = build_ast_root(call.as_str()).unwrap();
+    //     root.print("");
+    //     let val = root.evaluate().unwrap();
+    //     print!("Val: {:?}\n", val);
+    //     let log_instance = Value::from(VarValues::from(val));
+    //     let mut hashes = Vec::new();
+    //     find_transaction_hashes(&log_instance, &mut hashes);
+    //     self.find_corresponding_transaction(hashes)
+    // }
 
     pub fn get_all_logs(&self) -> Result<Vec<Properties>> {
         let client = Client::new();
-        let res = client.post("http://127.0.0.1:8545")
-            .json(&self.config)
-            .send();
+        let res = client.post("http://127.0.0.1:8545").json(&self.config).send();
         match res {
             Ok(res) => {
                 let log_res: LogResponse = serde_json::from_str(&res.text().unwrap()).unwrap();
                 println!("Logs: {:#?}", log_res);
-                let hashes: Vec<String> = log_res.result.iter().map(|r| r.transaction_hash.clone()).collect();
+                let hashes: Vec<(String, String)> = log_res.result
+                    .iter()
+                    .map(|r| (r.transaction_hash.clone(), r.data.clone()))
+                    .collect();
                 println!("Hashes: {:#?}", hashes);
                 Ok(self.find_corresponding_transaction(hashes))
             }
-            Err(err) => {Err(anyhow!("Failed to send rpc {}", err))},
+            Err(err) => { Err(anyhow!("Failed to send rpc {}", err)) }
         }
     }
 
     pub fn retrieve_block(&self, block_number: u256) -> Value {
         let call = format!(
-            "call(ethereum, get_block_by_number, [{}]).get(result)",
+            "call(ethereum, eth_getBlockByNumber, [{}]).get(result)",
             format!("{:#x}", block_number)
         ); // Blocknumber
         println!("Call: {}", call);
@@ -71,13 +69,10 @@ impl ReplayEthereumSocketHandler {
         Value::from(VarValues::from(val))
     }
 
-    fn find_corresponding_transaction(&self, hashes: Vec<String>) -> Vec<Properties> {
+    fn find_corresponding_transaction(&self, hashes: Vec<(String, String)>) -> Vec<Properties> {
         let mut properties: Vec<Properties> = Vec::new();
         for h in hashes {
-            let call = format!(
-                "call(ethereum, get_transaction_receipt, [{}]).get(result)",
-                h
-            ); // Blocknumber
+            let call = format!("call(ethereum, eth_getTransactionReceipt, [{}]).get(result)", h.0); // Blocknumber
 
             let root = build_ast_root(call.as_str()).unwrap();
             root.print("");
@@ -94,36 +89,45 @@ impl ReplayEthereumSocketHandler {
                         }
                     }
                     if let Some(_topics) = log.get("topics").and_then(|t| t.as_array()) {
-                        if _topics
-                            .iter()
-                            .any(|t| self.config.params[0].topics.contains(&t.as_str().unwrap().to_string()))
+                        if
+                            _topics
+                                .iter()
+                                .any(|t|
+                                    self.config.topics.contains(&t.as_str().unwrap().to_string())
+                                )
                         {
                             let topnum = _topics
                                 .iter()
-                                .find(|t| self.config.params[0].topics.contains(&t.as_str().unwrap().to_string()))
+                                .find(|t|
+                                    self.config.topics.contains(&t.as_str().unwrap().to_string())
+                                )
                                 .and_then(|t| Some(t.as_str().unwrap().to_string()));
                             let payer = receipt.get("from").unwrap().as_str().unwrap();
 
-                            let tx = get_transaction_by_hash(h.clone());
+                            let tx = get_transaction_by_hash(h.0.clone());
                             let value = tx.get("value").unwrap().as_str().unwrap();
-                            let block = u256::from_str_hex(
-                                log.get("blockNumber").unwrap().as_str().unwrap(),
-                            )
-                            .unwrap();
-                            let payer_balance_before =
-                                get_balance_at_block(payer.to_string(), block - 1);
-                            let payer_balance_after =
-                                get_balance_at_block(payer.to_string(), block);
+                            let block = u256
+                                ::from_str_hex(log.get("blockNumber").unwrap().as_str().unwrap())
+                                .unwrap();
+                            let payer_balance_before = get_balance_at_block(
+                                payer.to_string(),
+                                block - 1
+                            );
+                            let payer_balance_after = get_balance_at_block(
+                                payer.to_string(),
+                                block
+                            );
 
                             let p = Properties {
                                 occured_event: topnum,
-                                transaction_hash: Some(h.clone()),
+                                transaction_hash: Some(h.0.clone()),
                                 block_number: Some(block),
                                 payer_address: Some(payer.to_string()),
                                 payer_balance_before: Some(payer_balance_before),
                                 payer_balance_after: Some(payer_balance_after),
                                 value: Some(u256::from_str_hex(value).unwrap()),
                                 src_chain: Some("ethereum".to_string()),
+                                event_data: Some(h.1.clone()),
                             };
                             properties.push(p);
                         }
@@ -134,21 +138,21 @@ impl ReplayEthereumSocketHandler {
         properties
     }
 
-    pub fn filter_block(&self, block: Value) -> Vec<Properties> {
-        // for each transaction hash in the block, get the transaction
-        let mut hashes = Vec::new();
-        // find_transaction_hashes(&block, &mut hashes);
-        let hash_val = block
-            .get("transactions")
-            .expect("Wrong format for block transactions")
-            .as_array()
-            .unwrap()
-            .to_vec();
-        for h in hash_val {
-            hashes.push(h.as_str().unwrap().to_string());
-        }
-        self.find_corresponding_transaction(hashes)
-    }
+    // pub fn filter_block(&self, block: Value) -> Vec<Properties> {
+    //     // for each transaction hash in the block, get the transaction
+    //     let mut hashes = Vec::new();
+    //     // find_transaction_hashes(&block, &mut hashes);
+    //     let hash_val = block
+    //         .get("transactions")
+    //         .expect("Wrong format for block transactions")
+    //         .as_array()
+    //         .unwrap()
+    //         .to_vec();
+    //     for h in hash_val {
+    //         hashes.push(h.as_str().unwrap().to_string());
+    //     }
+    //     self.find_corresponding_transaction(hashes)
+    // }
 }
 
 /// Recursively searches through a JSON `Value` for keys named "transactionHash" and
@@ -190,10 +194,7 @@ fn find_transaction_hashes(value: &Value, hashes: &mut Vec<String>) {
 ///
 /// A `Value` containing the transaction receipt.
 fn get_transaction_by_hash(hash: String) -> Value {
-    let call = format!(
-        "call(ethereum, get_transaction_by_hash, [{}]).get(result)",
-        hash
-    ); // Blocknumber
+    let call = format!("call(ethereum, eth_getTransactionByHash, [{}]).get(result)", hash); // Blocknumber
 
     let root = build_ast_root(call.as_str()).unwrap();
     root.print("");
@@ -214,9 +215,11 @@ fn get_transaction_by_hash(hash: String) -> Value {
 ///
 /// A `u256` containing the balance of the address at the specified block number.
 fn get_balance_at_block(address: String, block_number: u256) -> u256 {
+    let hex_block_number = format!("{:#x}", block_number);
     let call = format!(
-        "call(ethereum, get_balance, [\"{}\", {}]).get(result)",
-        address, block_number
+        "call(ethereum, eth_getBalance, [\"{}\", {}]).get(result)",
+        address,
+        hex_block_number
     ); // Blocknumber
 
     let root = build_ast_root(call.as_str()).unwrap();
@@ -235,21 +238,21 @@ fn get_balance_at_block(address: String, block_number: u256) -> u256 {
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReplayConfig {
-    pub jsonrpc: String,
-    pub id: i64,
-    pub method: String,
-    pub params: Vec<Param>,
+    pub starting_block: String,
+    pub ending_block: String,
+    pub paging: bool,
+    #[serde(rename = "page_length")]
+    pub page_length: i64,
+    pub chains: Vec<Chain>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Param {
-    pub from_block: String,
-    pub to_block: String,
+pub struct Chain {
+    pub name: String,
     pub address: String,
     pub topics: Vec<String>,
 }
-
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -273,7 +276,6 @@ pub struct LogResult {
     pub log_index: String,
     pub removed: bool,
 }
-
 
 // #[test]
 // fn test_replay_config_deser() {

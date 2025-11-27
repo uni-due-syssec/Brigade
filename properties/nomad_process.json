@@ -2,7 +2,7 @@
     "event": "0xd42de95a9b26f1be134c8ecce389dc4fcfa18753d01661b7b361233569e8fe48",
     "chain_name": "ethereum",
     "properties": {
-        "input_data": "call(ethereum, get_transaction_by_hash, [$transaction_hash]).get(result).get(input)",
+        "input_data": "call(ethereum, eth_getTransactionByHash, [$transaction_hash]).get(result).get(input)",
         "recipient": "$input_data.slice(364, 428).as(address)",
         "sender": "$input_data.slice(146, 210).as(address)"
     },

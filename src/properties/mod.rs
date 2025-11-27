@@ -46,6 +46,7 @@ pub struct Properties{
     pub(crate) payer_balance_after: Option<u256>,
     pub(crate) value: Option<u256>,
     pub(crate) src_chain: Option<String>,
+    pub(crate) event_data: Option<String>
 }
 
 impl Properties{
@@ -59,7 +60,8 @@ impl Properties{
             value: None,
             payer_balance_before: None,
             payer_balance_after: None,
-            src_chain: None
+            src_chain: None,
+            event_data: None,
         }
     }
 

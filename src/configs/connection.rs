@@ -1,6 +1,30 @@
 use std::{mem::MaybeUninit, sync::Once};
 
+use serde::{Deserialize, Serialize};
 use ws::Sender;
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionConfig {
+    pub connections: Vec<Connection>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Connection {
+    pub name: String,
+    #[serde(rename = "rpc_url")]
+    pub rpc_url: String,
+    #[serde(rename = "ws_url")]
+    pub ws_url: Option<String>,
+}
+
+impl ConnectionConfig {
+    pub fn from_file(path: &str) -> Self {
+        let data = std::fs::read_to_string(path).unwrap();
+        serde_json::from_str(&data).unwrap()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ConnectionList {
