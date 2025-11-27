@@ -1,8 +1,12 @@
 /target
 
-*/inference/
+inference/
 
-*/out_of_sight/
+out_of_sight
 
 connection.json
 .env
+logs/*
+talon/
+rules/
+.vscode/

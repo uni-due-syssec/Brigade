@@ -1,7 +1,0 @@
-{
-    "from": "get_transaction_By_Hash.from",
-    "to": "get_transaction_By_Hash.to",
-    "value": "get_transaction_By_Hash.value",
-    "in_exchange_rate": "0x1",
-    "out_exchange_rate": "0x1"
-}
