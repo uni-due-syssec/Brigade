@@ -529,7 +529,7 @@ fn test_execute_custom_function() {
     let val = struct_from_json("D:/Masterarbeit/brigade/properties/test_definition2.json");
     println!("{:?}", val);
     let results = execute_custom_function(&val).unwrap();
-    println!("Result {:?}", results);
+    println!("Results {:?}", results);
 
     for (key, value) in results {
         if value.is_string() {

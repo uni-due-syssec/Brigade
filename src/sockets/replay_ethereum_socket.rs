@@ -132,7 +132,14 @@ impl ReplayEthereumSocketHandler {
         for h in hashes {
             let call = format!("call(ethereum, eth_getTransactionReceipt, [{}]).get(result)", h.0); // Blocknumber
 
-            let root = build_ast_root(call.as_str()).unwrap();
+
+            let r = build_ast_root(call.as_str());
+            if r.is_err() {
+                println!("Error: {}", r.err().unwrap());
+                println!("Call: {}", call);
+                continue;
+            }
+            let root = r.unwrap();
             root.print("");
             let val = root.evaluate().unwrap();
             let receipt = Value::from(VarValues::from(val));
@@ -296,17 +303,18 @@ fn get_balance_at_block(address: String, block_number: u256) -> u256 {
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReplayConfig {
-    pub starting_block: String,
-    pub ending_block: String,
     pub paging: Option<bool>,
     #[serde(rename = "page_length")]
     pub page_length: Option<u64>,
     pub chains: Vec<Chain>,
+    pub comment: Option<String>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Chain {
+    pub starting_block: String,
+    pub ending_block: String,
     pub name: String,
     pub address: String,
     pub topics: Vec<String>,

@@ -186,16 +186,16 @@ impl ChainConfig {
             "id": 1
         });
 
-        // Check if Chain exists already
-        if let Some(con) = connection::get_established_connections().get(&self.name) {
-            println!("Chain {} is already connected", self.name);
-            println!("Request: {}", request);
-            match con.send(request.to_string()){
-                Ok(_) => println!("Request sent"),
-                Err(e) => eprintln!("Error: {}", e),
-            }
-            return Ok(());
-        } else {
+        // // Check if Chain exists already
+        // if let Some(con) = connection::get_established_connections().get(&self.name) {
+        //     println!("Chain {} is already connected", self.name);
+        //     println!("Request: {}", request);
+        //     match con.send(request.to_string()){
+        //         Ok(_) => println!("Request sent"),
+        //         Err(e) => eprintln!("Error: {}", e),
+        //     }
+        //     return Ok(());
+        // } else {
             println!("Making new connection to {}", self.name);
             //load config
             let connection_config: ConnectionConfig =
@@ -226,7 +226,7 @@ impl ChainConfig {
             } else {
                 println!("No connection found for {}", self.name);
             }
-        }
+        // }
         Ok(())
     }
 }

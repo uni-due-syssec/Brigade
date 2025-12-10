@@ -5,6 +5,7 @@ use std::fs;
 use std::mem::uninitialized;
 use std::path::Path;
 
+use crate::configs::connection::{ConnectionConfig, get_established_connections};
 use crate::utils::Evaluation;
 use crate::{ get_var, set_var, utils };
 
@@ -528,7 +529,7 @@ impl ASTNode {
             ASTNode::Variable(name) => {
                 if let Some(v) = get_var!(name) {
                     match v.get_string() {
-                        None => println!("{}└── {}: {}", prefix, name.blue(), v.get_value()),
+                        None => println!("{}└── {}: {:?}", prefix, name.blue(), v),
                         Some(s) => {
                             if let Ok(u) = u256::from_str_hex(s) {
                                 println!(
@@ -1765,7 +1766,46 @@ impl ASTNode {
                             _ => Err(ASTError::InvalidConstant(operator.to_string().to_owned())),
                         }
                     }
-                    ASTConstant::Map(_) => Err(ASTError::InvalidBinaryOperator),
+                    ASTConstant::Map(m) => {
+                        match operator {
+                            LogicOperator::Equal => {
+                                match right {
+                                    ASTConstant::Map(hash_map) => {
+                                        for (key, value) in m.iter() {
+                                            if let Some(v) = hash_map.get(key) {
+                                                if v != value {
+                                                    return Ok(ASTConstant::Bool(false));
+                                                }
+                                            } else {
+                                                return Ok(ASTConstant::Bool(false));
+                                            }
+                                        }
+                                        return Ok(ASTConstant::Bool(true));
+                                    },
+                                    _ => {return Ok(ASTConstant::Bool(false));}
+                                }
+                            },
+                            LogicOperator::NotEqual => {
+                                match right {
+                                    ASTConstant::Map(hash_map) => {
+                                        for (key, value) in m.iter() {
+                                            if let Some(v) = hash_map.get(key) {
+                                                if v != value {
+                                                    return Ok(ASTConstant::Bool(true));
+                                                }
+                                            } else {
+                                                return Ok(ASTConstant::Bool(true));
+                                            }
+                                        }
+                                        return Ok(ASTConstant::Bool(false));
+                                    },
+                                    _ => {return Ok(ASTConstant::Bool(true));}
+                                }
+                            },
+                            _ => return Err(ASTError::InvalidBinaryOperator),
+                        }
+                        Err(ASTError::InvalidBinaryOperator)
+                    },
                 }
             }
             ASTNode::Function(function_name, args) => {
@@ -2115,6 +2155,7 @@ impl ASTNode {
                     Functions::Get => {
                         let me = args[0].clone().evaluate()?;
                         let key = args[1].evaluate()?;
+                        // println!("Me{:?} Get({:?})",me, &key.get_value());
                         match me {
                             ASTConstant::Map(map) =>
                                 match map.get(&key.get_value()) {
@@ -2164,13 +2205,72 @@ impl ASTNode {
                         let args = args[2..].to_vec();
 
                         // Find correct endpoint
-                        let f = format!(
-                            "functions/{}/connection.json",
-                            endpoint.evaluate().unwrap().get_value()
-                        );
-                        let p = Path::new(&f);
+                        let connections: ConnectionConfig = ConnectionConfig::from_file("config/connections.json");
+                        let end = &endpoint.evaluate().unwrap().get_value();
+                        println!("Endpoint: {}", end);
+                        let con = connections.connections.iter().find(|x| x.name == end.to_string());
+                        if let Some(con) = con {
+                            let p = fs::canonicalize(format!("functions/{}/rpc.json", end)).unwrap();
+                            let mut contents: RPCRequest = serde_json
+                                ::from_str(
+                                    &fs
+                                        ::read_to_string(p)
+                                        .expect("Something went wrong reading the file")
+                                )
+                                .unwrap();
+                            let mut clear_args = args
+                                .iter()
+                                .map(|x| x.evaluate().unwrap().get_value())
+                                .collect::<Vec<String>>();
+                            clear_args.insert(0, function_name.evaluate().unwrap().get_value());
+                            let s = replace_args_in_value(&mut contents, &clear_args);
+                            if s.is_err() {
+                                return Err(
+                                    ASTError::RequestReplacementError(
+                                        format!("{:?}", s.unwrap_err())
+                                    )
+                                );
+                            }
+                            // Build Client and send request
+                            let client = reqwest::blocking::Client::builder().build().unwrap();
+                            // print!("Endpoint: {}\n", endpoint_address);
+                            let resp = client
+                                .post(con.rpc_url.clone())
+                                .json(&contents)
+                                .send()
+                                .unwrap();
+                            // let resp2 = client.post(endpoint_address).json(&json).build().unwrap();
+                            // println!("Request: {:?}", resp2);
+                            let body: Value = serde_json::from_str(&resp.text().unwrap()).unwrap();
+                            let body = serde_json::to_string_pretty(&body).unwrap();
+                            println!("Result: {}", body);
+                            let result: Value = serde_json::from_str(&body.as_str()).unwrap();
 
-                        if !p.is_file() {
+                            // check if message contains an error
+                            if result.get("error").is_some() {
+                                return Err(
+                                    ASTError::InvalidFunctionInvocation(
+                                        format!(
+                                            "Error: {}",
+                                            result
+                                                .get("error")
+                                                .unwrap()
+                                                .get("message")
+                                                .unwrap()
+                                                .as_str()
+                                                .unwrap()
+                                        )
+                                    )
+                                );
+                            }
+
+                            let ret = ASTNode::from(result).evaluate();
+
+                            match ret {
+                                Ok(v) => Ok(v),
+                                Err(e) => Err(ASTError::ExpectedJSON),
+                            }
+                        } else {
                             return Err(
                                 ASTError::InvalidFunctionInvocation(
                                     format!(
@@ -2179,82 +2279,6 @@ impl ASTNode {
                                     )
                                 )
                             );
-                        }
-
-                        // Read contents and get "endpoint" field
-                        let contents = fs
-                            ::read_to_string(p)
-                            .expect("Something went wrong reading the file");
-                        let json: Value = serde_json::from_str(&contents).unwrap();
-                        let endpoint_address = json["endpoint"].as_str().unwrap();
-
-                        // Find correct function
-                        let f = format!(
-                            "functions/{}/rpc.json",
-                            endpoint.evaluate().unwrap().get_value()
-                            // function_name.evaluate().unwrap().get_value()
-                        );
-                        let p = Path::new(&f);
-
-                        // Read contents and replace all params that start with a $ sign with the respective arguments
-                        let mut contents: RPCRequest = serde_json
-                            ::from_str(
-                                &fs
-                                    ::read_to_string(p)
-                                    .expect("Something went wrong reading the file")
-                            )
-                            .unwrap();
-                        // let mut json: Value = serde_json::from_str(&contents)
-                        //     .expect("Failed to convert contents to json");
-                        let mut clear_args = args
-                            .iter()
-                            .map(|x| x.evaluate().unwrap().get_value())
-                            .collect::<Vec<String>>();
-                        // replace_args_in_json(&mut json, &mut clear_args);
-                        clear_args.insert(0, function_name.evaluate().unwrap().get_value());
-                        let s = replace_args_in_value(&mut contents, &clear_args);
-                        if s.is_err() {
-                            return Err(
-                                ASTError::RequestReplacementError(format!("{:?}", s.unwrap_err()))
-                            );
-                        }
-                        // let json = replace_args_in_str(&contents, &clear_args);
-
-                        // let json = serde_json::to_string(&json).unwrap();
-                        // println!("Json: {:?}", contents);
-                        // Build Client and send request
-                        let client = reqwest::blocking::Client::builder().build().unwrap();
-                        // print!("Endpoint: {}\n", endpoint_address);
-                        let resp = client.post(endpoint_address).json(&contents).send().unwrap();
-                        // let resp2 = client.post(endpoint_address).json(&json).build().unwrap();
-                        // println!("Request: {:?}", resp2);
-                        let body = resp.text().unwrap();
-                        println!("Result: {:?}", body);
-                        let result: Value = serde_json::from_str(&body.as_str()).unwrap();
-
-                        // check if message contains an error
-                        if result.get("error").is_some() {
-                            return Err(
-                                ASTError::InvalidFunctionInvocation(
-                                    format!(
-                                        "Error: {}",
-                                        result
-                                            .get("error")
-                                            .unwrap()
-                                            .get("message")
-                                            .unwrap()
-                                            .as_str()
-                                            .unwrap()
-                                    )
-                                )
-                            );
-                        }
-
-                        let ret = ASTNode::from(result).evaluate();
-
-                        match ret {
-                            Ok(v) => Ok(v),
-                            Err(e) => Err(ASTError::ExpectedJSON),
                         }
                     }
                     Functions::Require => {
@@ -2914,75 +2938,33 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
                         // First find out the target blockchain
                         // Get to the endpoint which is a valid path to the connection.json
                         let mut args_node: Vec<ASTNode> = vec![];
-
+                        // println!("Stack: {:?}", stack);
                         while !stack.is_empty() {
                             let arg = stack.pop().unwrap();
                             args_node.push(arg.clone());
-
-                            match arg.evaluate() {
-                                Ok(a) => {
-                                    // Check if is target
-                                    let f = format!("functions/{}/connection.json", a.get_value());
-                                    let p = Path::new(&f);
-                                    if p.exists() {
-                                        let contents = fs
-                                            ::read_to_string(p)
-                                            .expect("File not found or unable to read file");
-                                        let json: Value = serde_json
-                                            ::from_str(&contents)
-                                            .expect("JSON was not well-formatted");
-                                        let endpoint = json["endpoint"].as_str().unwrap();
-
-                                        args_node.reverse();
-
-                                        let args = args_node
-                                            .iter()
-                                            .map(|x| Box::new(x.clone()))
-                                            .collect();
-
-                                        let node = ASTNode::Function(Functions::Custom, args);
-                                        ast_vec.push(node.clone());
-                                        stack.push(node);
-                                        break;
-                                    }
-                                }
-                                Err(e) => {
-                                    args_node.reverse();
-                                    let args: Vec<Box<ASTNode>> = args_node
-                                        .iter()
-                                        .map(|x| Box::new(x.clone()))
-                                        .collect();
-                                    match args_node[1].evaluate() {
-                                        Ok(a) => {
-                                            return Err(
-                                                ASTError::InvalidCustomCall(
-                                                    args_node[1].evaluate().unwrap().get_value(),
-                                                    e.to_string()
-                                                )
-                                            );
-                                        }
-                                        Err(e) => {
-                                            return Err(
-                                                ASTError::InvalidCustomCall(
-                                                    "Custom".to_string(),
-                                                    e.to_string()
-                                                )
-                                            );
-                                        }
-                                    }
-                                }
-                            }
                         }
-                        if stack.is_empty() {
+                        args_node.reverse();
+                        // println!("Args: {:#?}", args_node);
+
+                        if args_node.is_empty() {
                             // Stack is empty and no valid path found
                             return Err(ASTError::InvalidFunction("call()".to_string()));
                         }
+
+                        let args = args_node
+                            .iter()
+                            .map(|x| Box::new(x.clone()))
+                            .collect();
+
+                        let node = ASTNode::Function(Functions::Custom, args);
+                        ast_vec.push(node.clone());
+                        stack.push(node);
                     }
                     Functions::Require => {
                         if let Some(arg_1) = stack.pop() {
                             if let Some(arg_0) = stack.pop() {
-                                println!("Arg 0: {:?}", arg_0);
-                                println!("Arg 1: {:?}", arg_1);
+                                // println!("Arg 0: {:?}", arg_0);
+                                // println!("Arg 1: {:?}", arg_1);
                                 let node = ASTNode::Function(
                                     Functions::Require,
                                     vec![Box::new(arg_0), Box::new(arg_1)]
@@ -3044,9 +3026,12 @@ pub fn parse_postfix(tokens: VecDeque<String>) -> Result<(Vec<ASTNode>, ASTNode)
         }
     }
 
-    let root = stack.pop().unwrap();
+    if let Some(root) = stack.pop(){
+        Ok((ast_vec, root))
+    }else {
+        Err(ASTError::MissingRoot)
+    }
 
-    Ok((ast_vec, root))
 }
 
 pub fn parse_token(token: String) -> Result<ASTNode, &'static str> {
@@ -3311,7 +3296,7 @@ fn replace_args_in_value(json: &mut RPCRequest, args: &Vec<String>) -> Result<()
     }
     // match args.get(1) {
     //     Some(arg) => {
-    //         let v = parse_string(arg);            
+    //         let v = parse_string(arg);
     //         json.params = vec![v];
     //     }
     //     None => {
@@ -3470,7 +3455,7 @@ pub fn build_ast_root(text: &str) -> Result<ASTNode, &'static str> {
 
     match shunting_yard_algorithm(tokens) {
         Ok(postfix) => {
-            // println!("{:?}", postfix);
+            println!("{:?}", postfix);
             match parse_postfix(postfix) {
                 Ok((_, root)) => {
                     return Ok(root);

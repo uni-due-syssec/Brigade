@@ -52,6 +52,8 @@ pub enum ASTError {
     OverflowError(String),
     #[error("failed to parse request {0}")]
     RequestReplacementError(String),
+    #[error("missing root of token parsing")]
+    MissingRoot,
 }
 
 #[derive(Error, Debug)]

@@ -32,13 +32,13 @@ impl ConnectionConfig {
             let e = std::env::var(env_var);
             match e {
                 Ok(v) => {
-                    println!("{}: {}", env_var, v);
+                    // println!("{}: {}", env_var, v);
                     c.rpc_url = v.clone();
                     let w = v.replace("http", "ws");
                     c.ws_url = Some(w);
                 }
                 Err(e) => {
-                    println!("{}: {}", env_var, e);
+                    // println!("{}: {}", env_var, e);
                     continue;
                 }
             }

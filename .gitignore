@@ -10,3 +10,4 @@ logs/*
 talon/
 rules/
 .vscode/
+out.txt

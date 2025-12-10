@@ -151,7 +151,7 @@ fn main() {
     println!("Connecting at {}", ip_addr);
 
     // Start threads for Chains and Events
-    let mut thread_ids = vec![];
+    // let mut thread_ids = vec![];
     let dir = Path::new("config");
 
     // Build Message Channels
@@ -198,9 +198,8 @@ fn main() {
             // let thread_names_clone = Arc::clone(&thread_names);
             // Deserialize the file contents into a ChainConfig
             let contents = fs::read_to_string(&path).unwrap();
-            let bd: BridgeConfig = serde_json::from_str(&contents).unwrap();
-
-            for config in bd.contracts {
+            if let Ok(bd) = serde_json::from_str::<BridgeConfig>(&contents){
+for config in bd.contracts {
                 let sender_clone = sender.clone();
 
                 let contract_name =
@@ -218,6 +217,13 @@ fn main() {
                     Err(_) => println!("Failed to connect to {}", config.get_name()),
                 }
             }
+            }else{
+                println!("Skipping config {}", path.display());
+                continue;
+            }
+
+
+            
         }
     } else {
         // Replay mode:
@@ -230,39 +236,41 @@ fn main() {
         //     .end_block
         //     .expect("End block must be provided for replaying transactions");
         // let mut block_number = block_start;
+        let replay_config_path = args.replay_config.expect(
+            "Replay config must be provided. See ReplayConfig in replay_ethereum_socket.rs"
+        );
 
+        let config_contents = fs::read_to_string(replay_config_path).unwrap();
         let config: replay_ethereum_socket::ReplayConfig = serde_json
-            ::from_str(
-                fs
-                    ::read_to_string(
-                        args.replay_config
-                            .expect(
-                                "Replay config must be provided. See ReplayConfig in replay_ethereum_socket.rs"
-                            )
-                            .to_str()
-                            .unwrap()
-                    )
-                    .unwrap()
-                    .as_str()
-            )
+            ::from_str(&config_contents)
             .unwrap();
-        let start = u64
-            ::from_str_radix(config.starting_block.trim_start_matches("0x"), 16)
-            .expect("invalid start hex");
-        let end = if &config.ending_block == "latest" {
-            unimplemented!("latest not implemented");
-        } else {
-            u64::from_str_radix(&config.ending_block.trim_start_matches("0x"), 16).expect(
-                "invalid end hex"
+
+        let start: Vec<u64> = config.chains
+            .iter()
+            .map(|x|
+                u64
+                    ::from_str_radix(&x.starting_block.trim_start_matches("0x"), 16)
+                    .expect("Failed to get block number from replay config!")
             )
-        };
+            .collect();
+
+        let end: Vec<u64> = config.chains
+            .iter()
+            .map(|x|
+                if x.ending_block == "latest" {
+                    unimplemented!()
+                }else {
+                u64
+                    ::from_str_radix(&x.ending_block.trim_start_matches("0x"), 16)
+                    .expect("Failed to get block number from replay config!")
+                }
+            )
+            .collect();
         let step_len = config.page_length.unwrap_or(10000);
         let step = if config.paging.unwrap_or(false) { step_len } else { 10_000 };
 
-        for chain in config.chains {
+        for (id, chain) in config.chains.iter().enumerate() {
             let tx_clone = tx.clone();
-            thread_ids.push(
-                thread::spawn(move || {
                     let connections = ConnectionConfig::from_file("config/connections.json");
                     let chain_connection = connections.connections
                         .iter()
@@ -272,15 +280,18 @@ fn main() {
                     // call the replay function and then invoke the replay handler and send the resulting properties via tx to rx
                     let replayer = replay_ethereum_socket::ReplayEthereumSocketHandler {
                         chain_name: chain.name.to_string(),
-                        config: chain,
+                        config: chain.clone(),
                         rpc_url: chain_connection.rpc_url.to_string(),
                     };
 
                     // let txs = replayer.get_all_logs().unwrap();
 
-                    for i in (start..=end).step_by(step as usize) {
-                        let end_block = min(end, i+step);
-                        let txs = replayer.get_logs(format!("0x{:x}", i), format!("0x{:x}", end_block));
+                    for i in (start[id]..=end[id]).step_by(step as usize) {
+                        let end_block = min(end[id], i + step);
+                        let txs = replayer.get_logs(
+                            format!("0x{:x}", i),
+                            format!("0x{:x}", end_block)
+                        );
                         match txs {
                             Ok(txs) => {
                                 println!("Length of txs: {}", txs.len());
@@ -292,8 +303,7 @@ fn main() {
                             Err(e) => eprintln!("Error: {}", e),
                         }
                     }
-                })
-            );
+                
         }
 
         // TODO: Terminate the program gracefully
@@ -306,9 +316,9 @@ fn main() {
     //     configs::connection::get_established_connections().len()
     // );
 
-    for t in thread_ids {
-        t.join().unwrap();
-    }
+    // for t in thread_ids {
+    //     t.join().unwrap();
+    // }
 
     // Wait for user termination
     let mut input = String::new();

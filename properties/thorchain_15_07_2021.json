@@ -1,0 +1,16 @@
+{
+    "event": "Deposit(address,address,uint256,string)",
+    "chain_name": "ethereum",
+    "properties": { 
+        "event_data": "call(ethereum, eth_getTransactionReceipt, [$transaction_hash]).get(result).get(logs).at(0)",
+        "receiver": "$event_data.get(topics).at(1).as(address)",
+        "receiver_balance": "call(ethereum, eth_getBalance, [$receiver, $ethereum_block_number.as(hex)]).get(result)",
+        "receiver_balance_before": "call(ethereum, eth_getBalance, [$receiver, ($ethereum_block_number - 1).as(hex)]).get(result)",
+        "amount": "$event_data.get(data).slice(2,66).as(u256)"
+    },
+    "pattern": [
+        "$receiver_balance",
+        "$receiver_balance_before",
+        "$receiver_balance_before + $amount == $receiver_balance"
+    ]
+}

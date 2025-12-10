@@ -1,0 +1,16 @@
+{
+  "comment": "ThorChain Replay Config from the Exploit at Jul-15-2021",
+  "paging": false,
+  "page_length": 500,
+  "chains": [
+    {
+      "startingBlock": "0xc3d150",
+      "endingBlock": "0xc3d16f",
+      "name": "ethereum",
+      "address": "0xC145990E84155416144C532E31f89B840Ca8c2cE",
+      "topics": [
+        "0xef519b7eb82aaf6ac376a6df2d793843ebfd593de5f1a0601d3cc6ab49ebb395"
+      ]
+    }
+  ]
+}

@@ -1,10 +1,10 @@
 {
-  "startingBlock": "0xe51000",
-  "endingBlock": "0xe5132a",
   "paging": true,
   "page_length": 500,
   "chains": [
     {
+      "startingBlock": "0xe51000",
+      "endingBlock": "0xe5132a",
       "name": "ethereum",
       "address": "0x715CdDa5e9Ad30A0cEd14940F9997EE611496De6",
       "topics": [

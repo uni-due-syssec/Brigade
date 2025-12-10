@@ -1,0 +1,17 @@
+{
+    "event": "0xa68ce84c815a939744a011df05adcf79b74994aada52c5810979c254042f553d",
+    "chain_name": "ethereum",
+    "properties": { 
+        "event_data": "call(ethereum, eth_getTransactionReceipt, [$transaction_hash]).get(result).get(logs).at(0).get(data)",
+        "0xstring": "0x",
+        "ckbtx_hash": "$event_data.slice(194,258)",
+        "ckb_hash": "$0xstring.push($ckbtx_hash)",
+        "nervos_check": "call(nervos, get_transaction, [$ckb_hash]).get(result)",
+        "nervos_tx": "$nervos_check.get(transaction)"
+    },
+    "pattern": 
+       [
+        "$nervos_tx",
+        "$nervos_tx != None"
+    ]
+}

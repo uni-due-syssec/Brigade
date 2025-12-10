@@ -1,0 +1,16 @@
+{
+  "comment": "force replay config. The attacker unlocked non-existent tx hashes (Nervos Network ckb txhashes) on Ethereum and BSC. Exploit at block 0x158F9B2 !startingBlock: 0x158f9b1, endingBlock:0x158f9b3",
+  "paging": true,
+  "page_length": 500,
+  "chains": [
+    {
+      "startingBlock": "0x1263275",
+      "endingBlock": "0x1263277",
+      "name": "ethereum",
+      "address": "0x63A993502e74828ddba5710327AFC6dc78d661b2",
+      "topics": [
+        "0xa68ce84c815a939744a011df05adcf79b74994aada52c5810979c254042f553d"
+      ]
+    }
+  ]
+}
