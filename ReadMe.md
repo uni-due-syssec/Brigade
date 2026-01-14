@@ -11,6 +11,11 @@
     - [Predefined Variables](#predefined-variables)
   - [Hints for later](#hints-for-later)
 
+
+Brigade is a cross-chain bridge monitor, connecting to live or private chains.
+It analyzes cross-chain transactions to enforce security policies on them, effectively detecting security issues and exploits.
+
+
 ## How to use
 
 To setup endpoints use the .env.sample to setup endpoints.
